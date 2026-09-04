@@ -1,0 +1,106 @@
+/* Orbitron - Sci-fi Tech Font */
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 300 900;
+    font-display: swap;
+    src: local('Orbitron');
+}
+
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local('Orbitron Regular'), local('Orbitron-Regular');
+}
+
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: local('Orbitron Medium'), local('Orbitron-Medium');
+}
+
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: local('Orbitron SemiBold'), local('Orbitron-SemiBold');
+}
+
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local('Orbitron Bold'), local('Orbitron-Bold');
+}
+
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 900;
+    font-display: swap;
+    src: local('Orbitron Black'), local('Orbitron-Black');
+}
+
+/* Rajdhani - Modern Display Font */
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+    src: local('Rajdhani');
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+    src: local('Rajdhani Light'), local('Rajdhani-Light');
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: local('Rajdhani Regular'), local('Rajdhani-Regular');
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: local('Rajdhani Medium'), local('Rajdhani-Medium');
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: local('Rajdhani SemiBold'), local('Rajdhani-SemiBold');
+}
+
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local('Rajdhani Bold'), local('Rajdhani-Bold');
+}
+
+/* Fallback Font Stack */
+.font-tech {
+    font-family: 'Orbitron', 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.font-main {
+    font-family: 'Rajdhani', 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}

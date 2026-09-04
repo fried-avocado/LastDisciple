@@ -1,0 +1,15 @@
+{
+  "interval": 2,
+  "gateway": "192.168.0.1",
+  "lanGateway": "192.168.0.1",
+  "wanHost": "www.baidu.com",
+  "wanHosts": [
+    "www.baidu.com",
+    "www.taobao.com",
+    "www.jd.com"
+  ],
+  "wanPingEnabled": true,
+  "debounceTime": 10,
+  "debug": true,
+  "probingMode": "fixed"
+}

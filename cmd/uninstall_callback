@@ -1,0 +1,38 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_TEMP_LOGFILE}"
+
+log_msg() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >>"${LOG_FILE}"
+}
+
+APP_SRC_DIR="${TRIM_APPDEST}/server"
+
+log_msg "Uninstall callback triggered for ${TRIM_APPNAME:-FreePower}"
+
+if [ "${wizard_data_action:-}" != "delete" ]; then
+  log_msg "Data keep mode selected, skipping cleanup."
+  exit 0
+fi
+
+log_msg "Full cleanup mode: removing all application data and artifacts..."
+
+if [ -n "${TRIM_PKGVAR}" ] && [ -d "${TRIM_PKGVAR}" ]; then
+  log_msg "Removing data directory: ${TRIM_PKGVAR}"
+  rm -rf "${TRIM_PKGVAR}"
+fi
+
+if [ -n "${APP_SRC_DIR}" ] && [ -d "${APP_SRC_DIR}" ]; then
+  if [ -d "${APP_SRC_DIR}/.venv" ]; then
+    log_msg "Removing old venv: ${APP_SRC_DIR}/.venv"
+    rm -rf "${APP_SRC_DIR}/.venv"
+  fi
+
+  if [ -f "${APP_SRC_DIR}/.venv_migrated" ]; then
+    log_msg "Removing migration marker: ${APP_SRC_DIR}/.venv_migrated"
+    rm -f "${APP_SRC_DIR}/.venv_migrated"
+  fi
+fi
+
+log_msg "Full cleanup completed."
+exit 0

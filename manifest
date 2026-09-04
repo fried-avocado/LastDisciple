@@ -1,0 +1,248 @@
+appname                    = FreePower
+version                    = 1.0.60
+display_name               = FreePower
+desc                       = """FreePower-description"""
+platform                   = x86
+source                     = thirdparty
+maintainer                 = 牛油果
+maintainer_url             = https://club.fnnas.com/home.php?mod=space&uid=94706
+distributor                = 牛油果
+distributor_url            = https://club.fnnas.com/home.php?mod=space&uid=94706
+os_min_version             = 1.1.8
+ctl_stop                   = true
+desktop_uidir              = ui
+desktop_applaunchname      = FreePower.Application
+service_port               = 8848
+checkport                  = true
+install_dep_apps           = python 3.9>3.9.10
+disable_authorization_path = false
+changelog                  = """
+- 遵循飞牛 OS 权限规范，新增特权助手守护进程（priv_helper）：
+  生命周期脚本以 root 运行，Web 服务经 runuser 降权到包用户
+- 获取应用/启动应用/停止应用三个操作通过 Unix socket 临时申请 root 权限，
+  采用「申请→使用→释放」安全流程，含 SO_PEERCRED 身份校验与输入校验
+- 新增 /api/app-control、/api/execute-shutdown、/api/execute-startup 接口
+- 前端新增「立即执行关闭/启动」按钮与执行结果面板
+- 非 fnOS 环境下优雅降级（返回 fallback 或 503）
+- 应用列表获取改为优先使用 appcenter-cli list（root 权限），不可用时回退到目录遍历
+- 应用启停优先使用 appcenter-cli start/stop，失败时回退到 systemctl
+- 全面增强权限相关日志：记录调用方身份(UID/用户名)、权限验证过程(SO_PEERCRED)、
+  API 调用参数、命令返回码/stderr、操作耗时，便于追踪权限问题根因
+- 修复 appcenter-cli 输出解析器中表头关键词误匹配真实应用名的 bug（改用词边界匹配）
+- 修复 appcenter-cli 解析器无法处理 fnOS Unicode 表格输出（│框线字符）的 bug，
+  改为按 │ 分隔符提取字段，并从表格第二列直接获取 displayName
+- 修复回退目录遍历路径错误：fnOS 实际使用 /vol1/@appcenter 而非 /apps，
+  新增 _find_apps_dir() 优先从 TRIM_APPDEST 爯目录推导
+- 应用列表扫描时自动忽略当前应用（FreePower）依赖的关联应用及其反向依赖，
+  避免重复扫描或错误包含依赖项
+- 修复页面国际化（i18n）显示问题：切换中文时，将所有仍显示英文的按钮/占位
+  文本改为国际化（AWAITING DATA、SYNCING、0s、ms 单位、DOCKER/APP 徽章、
+  关闭按钮 aria-label 等），实现全中文显示
+- 优化 Docker 应用列表功能：
+  * 移除对当前应用的过滤机制，应用列表现在包含当前应用（FreePower）自身
+  * 获取应用列表时包含当前应用所依赖的所有应用
+  * 依赖匹配规则：版本不完全匹配时，仅应用名称匹配即可认定为相关依赖应用
+  * 将"停止应用列表"统一更名为"原生应用列表"
+- 原生应用列表自动获取功能优化：
+  * 自动获取时排除当前应用本身（FreePower）
+  * 自动获取时排除依赖应用（如 python 3.9）
+  * 应用名称匹配改为忽略大小写，提升排除准确性与鲁棒性
+- 修复自动获取应用列表返回 503 的问题：
+  * 修复 excluded 字段为 set 无法 JSON 序列化导致 helper 连接异常关闭
+  * 依赖解析新增 fnOS 系统级 manifest 路径 /var/apps/FreePower/manifest，
+    确保依赖应用（如 python 3.9）能被正确识别并排除
+- 建立全局版本号管理规范：
+  * 新增 VERSIONING.md 文档，规定每次代码修改后必须递增版本号（最后一位 +1）
+  * README 增加版本管理章节，引导开发者遵循规范
+- 弹窗实现优化：
+  * 将原生 alert 弹窗替换为与页面视觉风格一致的页面内非阻塞弹窗
+  * 支持自定义标题、类型图标、尺寸（sm/md/lg）、位置（top/center/bottom）、
+    动画（scale/slideup/fade）及自动关闭
+  * 支持点击弹窗外部区域、关闭按钮或 ESC 键关闭
+  * 适配不同屏幕尺寸，非阻塞式设计不中断用户操作流程
+- 修复弹窗样式异常：
+  * 修复弹窗底部操作按钮继承 .btn 的 width:100% 导致桌面端按钮全宽的问题，
+    新增 .inapp-modal-footer .btn 覆盖规则（width:auto、紧凑内联布局）
+  * 移动端（≤480px）保持按钮垂直堆叠全宽，适配小屏操作
+  * 已验证默认/激活/关闭中状态、点击外部/ESC/关闭按钮关闭、桌面/移动布局
+- 优化"设置已保存"成功提示弹窗视觉表现：
+  * 图标由 emoji 改为圆形徽章样式（CSS 绘制，大小/位置/配色可控），
+    各类型（success/warning/error/info）使用对应配色与发光效果
+  * 新增类型化顶部强调光条（--modal-accent），增强层次感
+  * 优化尺寸比例（圆角 16px、加大内边距、小尺寸成功提示）
+  * 优化背景/文字对比度与阴影层次，平滑的缩放淡入过渡动画
+  * "设置已保存"弹窗升级为 success 类型并支持自动关闭（1.6s）
+  * 保持移动端响应式适配
+- "设置已保存"弹窗内容居中优化：
+  * 新增 .inapp-modal-message 样式，通知类弹窗消息内容居中显示
+  * 调整消息字号/行距/内边距，提升可读性与视觉舒适度
+- 修复国际化缺失键：
+  * 补充 autoFetchContainers 键（Docker 容器自动获取按钮未国际化）
+  * 补充 autoFetchSearchPlaceholder 键（搜索框占位符未国际化）
+  * 全量核对 78 个 data-i18n 键 + 48 个 JS i18n.t() 键，确认无缺失
+- 界面布局与网络配置功能优化：
+  * Ping 间隔输入框宽度调整为 100px（≤200px），与单位下拉框比例协调，
+    完整显示典型输入值
+  * 网关地址拆分为内网网关 + 外网地址分离管理：
+    - 内网网关：未手动设置时自动获取局域网默认网关（ip route/route -n），
+      支持一键自动检测按钮
+    - 外网地址：下拉菜单+输入框组合控件，预置中国国内排名前十的互联网公司
+      网址（www.baidu.com 等），支持自定义输入
+  * 新增 detect_default_gateway() 后端函数，配置兼容旧 gateway 字段
+  * 界面风格保持与整体设计语言一致（霓虹色、圆角、玻璃拟态）
+- 手动切换日间/夜间主题时自动切换为主题手动模式：
+  * 用户点击右上角主题切换开关手动切换日间/夜间后，主题模式自动切换为"手动"，
+    并停止自动切换定时器，避免自动模式覆盖用户选择
+  * 手动切换后的主题选择持久化保存（localStorage），刷新页面后保持手动模式与所选主题
+- 设置页面布局视觉全面优化：
+  * 配置卡片按逻辑分组（外观主题/网络参数/检测模式），带霓虹图标分组标题与虚线分隔
+  * 表单标签增加霓虹装饰条，输入框/下拉框 hover 与 focus 光晕增强
+  * 下拉框改为自定义霓虹箭头（包裹容器 + ::after 伪元素），适配日/夜主题
+  * 卡片标题图标放入发光容器，统一提升各卡片视觉质感
+  * 保存按钮改为右对齐操作栏（form-actions），移动端自动堆叠全宽
+- 外网地址交互流程优化：
+  * 输入框始终可直接输入自定义地址，无需先选择"自定义..."选项
+  * 输入自定义地址时下拉实时同步，自动出现"自定义: <地址>"选项并选中，
+    新地址立即可选，无需先保存
+  * 选择预设地址时输入框自动回填；输入值匹配预设时下拉自动切换选中
+  * 保存后的自定义地址刷新后仍在下拉中可见可选
+  * 新增 i18n 键：themeSectionTitle/networkSectionTitle/detectionSectionTitle/
+    wanAddressHint/wanCustomValue
+- 外网地址改为自定义下拉组件（支持自定义 URL 管理与删除）：
+  * 移除与下拉并排的文本输入框，选择"自定义..."时下拉动态转换为文本输入框，
+    失焦（blur）后自动恢复为下拉
+  * 输入的自定义 URL 立即临时加入下拉选项，可在最终保存前连续添加多个
+  * 每个自定义 URL 选项右侧提供"×"删除按钮，点击立即从下拉中移除
+  * 临时（未保存）与永久（已保存）自定义 URL 分离管理：
+    - 点击保存后临时 URL 合并入永久列表并持久化（localStorage），刷新后保留
+    - 未保存的临时 URL 刷新页面后自动清除，不持久化
+  * 下拉面板展示预设网址 + 自定义 URL + "自定义..."操作，当前选中项高亮；
+    选中自定义 URL 时自动加入临时列表
+  * 触发按钮显示当前选中地址，点击展开/收起下拉，点击外部区域自动关闭
+  * 新增 i18n 键：wanRemoveCustomBtn
+- 设置页面全面布局调整（现代设计美学）：
+  * 卡片头部统一渐变背景与强调线，标题层级强化（字号/字距/图标容器发光）
+  * "外观主题"与"检测模式"分组改为并排两列布局，配置卡片高度从约 1056px
+    降至约 874px，信息密度更均衡；检测模式单选在窄列自动垂直堆叠，
+    ≤900px 恢复单列堆叠
+  * 网络参数分组独立全宽成行，Ping间隔/内网网关/外网地址排布更清晰
+  * 统一表单控件高度（48px）与圆角（10px），分组标题增加霓虹装饰竖条
+  * 统一分组与表单项间距体系，卡片内容留白更通透（26px）
+  * 操作栏按钮 hover 光晕增强，radio 选项 hover 上浮与选中阴影强化
+  * 应用顺序卡片标题层次微调，整体色彩与既有霓虹设计语言保持一致
+- 修复静态文件缓存策略导致浏览器加载旧版页面的问题：
+  * HTML 文件（index.html）改为 no-cache/no-store/must-revalidate，
+    确保开发者与用户始终加载到最新页面
+  * 其他静态资源（JS/CSS/字体等）保留 public max-age=3600 缓存，
+    配合前端版本号参数（?v=）刷新
+- 设置页面新增 Apple HIG（iOS/macOS）风格布局：
+  * 新增 .apple-settings 作用域内的完整 Apple 设计系统：
+    - Apple 系统字体（-apple-system/SF Pro/PingFang SC）与排版规范
+    - Apple 暗色/亮色双主题色板（精确匹配 iOS 系统色值）
+    - 分组圆角卡片（Grouped Table View）列表行布局
+    - Segmented Control 分段切换（主题模式）
+    - Apple 风格 Radio Card 单选卡片（检测模式）
+    - 无边框圆角输入框 + 聚焦蓝色光环
+    - 药丸形标签（Tags）替代方块标签
+    - Apple 按钮（Primary/Secondary/Destructive/Success）
+  * 响应式适配：iPhone（≤480px）、iPad Mini 横屏（481-768px）、
+    iPad（769-1024px）、Mac（≥1025px）四档断点
+  * 最大宽度 720px 居中布局，与 macOS System Settings 视觉一致
+  * 无障碍支持：prefers-reduced-motion 动画禁用、
+    focus-visible 键盘焦点指示器
+  * Apple 风格 UI 与原有赛博朋克 UI 通过 AppleSync 模块双向同步：
+    - 表单输入值实时双向绑定
+    - 主题/探测模式状态联动
+    - 应用标签/顺序列表变更镜像同步
+    - WAN 下拉菜单独立 Apple 风格实现
+    - 执行结果面板同步显示
+- 修复 Apple 设置页在 CSS Grid 12 列布局中被压缩到 138px 的严重布局问题：
+  * 为所有 Apple UI 直接子元素（apple-page-title/group-header/group/info/
+    order-sections/按钮行）添加 grid-column: 1 / -1 使其跨越全部列
+  * 修复 i18n 对象引用错误（window.i18n → i18n 局部变量）
+  * 修复 fetchSettings 返回 undefined 导致的初始数据同步失败
+  * 添加 updateWanTrigger 拦截器确保 WAN 标签实时同步
+  * 添加 setInterval 延迟初始同步确保服务器数据到达后 Apple UI 更新
+- 优化 Apple 设置页 CSS 结构与可维护性：
+  * 将脆弱的 div[style*="padding"] 选择器替换为明确的 .apple-actions-row 类
+  * 新增 .apple-actions-save / .apple-actions-execute 布局类，内联样式移入 CSS
+  * 清理旧卡片 display:none 后遗留的冗余规则（card::before/card:hover/card-body 等）
+  * 修复 apple-result-panel 未纳入 grid-column 跨越规则，执行结果面板显示时被
+    压缩到首列的隐患
+  * 验证暗色/亮色主题切换正确应用 Apple 色板（#1c1c1e/#007aff 等）
+- 修复设置页样式风格不统一的问题（Apple HIG 视觉统一）：
+  * .apple-settings 根元素统一 font-family: var(--apple-font)，
+    修复所有 Apple 元素错误继承 body 的 Rajdhani/Orbitron 赛博朋克字体
+  * switchTab('settings') 时给 body 添加 apple-settings-mode class，
+    设置页激活时整个页面切换为 Apple 视觉环境
+  * Apple 模式下隐藏赛博朋克装饰层（grid-overlay/scan-line）
+  * header 简化：隐藏霓虹渐变与 icon-pulse 动画，图标改用 --apple-accent 蓝色
+  * dashboard-title 覆盖 -webkit-background-clip:text 霓虹渐变，改用纯色 Apple 标题
+  * 日间模式背景切换 #f2f2f7，暗色 #000000，与 iOS/macOS 系统设置一致
+  * 验证设置页内 0 个元素使用 Rajdhani/Orbitron 字体，风格完全统一
+- 修复外网地址下拉菜单定位错乱问题：
+  * 根因：.card 上的 backdrop-filter: blur(20px) 在 Chrome 中会使其成为
+    position:fixed 后代元素的包含块，下拉面板按视口坐标计算后实际相对卡片定位，
+    页面滚动后跑到屏幕左上角（视口外）
+  * 修复：下拉打开时挂载到 document.body，改用文档坐标 absolute 定位，
+    随页面自然滚动、始终锚定在外网地址字段下方，不悬浮不脱节；
+    关闭时归还到 wan-field，保持 DOM 结构完整；同时规避卡片 overflow:hidden 裁剪
+  * 已验证：打开定位/向上翻转/选择预设/自定义输入/删除自定义 URL 全部正常
+- 新增外网地址多线程 ping 检测功能：
+  * 后端新增 WanPingThread 独立线程（与内网 PingThread 并行），探测目标为
+    外网地址（wanHost）；未启用时空转等待，启用后开始轮询探测
+  * 探测逻辑（ICMP+TCP 回退）与内网完全共用，检测模式（固定/自适应）与
+    内网共用同一套 probingMode 配置，确保检测标准、频率控制与数据处理统一
+  * 配置新增 wanPingEnabled 开关字段，随 /api/config 读写持久化；
+    保存后立即同步状态避免按钮回跳
+  * 新增 /api/wan-status 接口，返回外网连接状态、min/avg/max 响应时间、
+    样本数与丢包率、探测等级信息及最近 10 条历史
+  * 前端：外网地址下拉菜单下方新增"启用/停用多线程Ping"开关按钮（霓虹风格、
+    激活态发光动画）；监控页新增"外网Ping状态"卡片，含连接横幅
+    （目标/状态/丢包率）、四项统计卡片（样本数/min/avg/max）与响应时间趋势图
+  * 监控页 WAN 状态卡片随开关启停自动显示/隐藏；启用/停用即时生效并持久化
+  * 新增 i18n 键 15 个（中英文），TRANSLATIONS_VERSION 递增强制刷新语言缓存
+  * 已验证：开关启停、线程探测、统计实时更新、图表渲染、刷新持久化、
+    中英文切换均正常
+- 修复日志读取失败问题（日志面板报"读取日志失败"）：
+  * 根因：新增外网 WanPingThread 后，内网/外网两个线程并发以追加模式写
+    同一个 ping.log，无锁导致写入交错，行数据撕裂出非法 UTF-8 字节，
+    使 /api/logs 以 utf-8 读取整个文件时抛 UnicodeDecodeError
+  * 修复一：write_log 增加线程锁，保证多线程下每次写入为原子操作，
+    根治行撕裂（探测日志每分钟仅数行，锁开销可忽略）
+  * 修复二：/api/logs 读取改用 errors='replace' 容错，历史撕裂行不再
+    导致整个接口失败，仅以替换字符显示
+  * 已验证：接口恢复 200 正常返回、前端日志面板 50 条 0 错误、
+    新日志无撕裂
+- 新增外网地址多选轮询探测功能：
+  * 外网地址下拉菜单改为多选模式，每个选项前显示 ☑/☐ 勾选图标，
+    点击切换勾选状态而不关闭下拉，支持同时选择多个外网地址
+  * 触发器按钮多选时显示「已选 N 个网址 · 第一个地址」摘要文本
+  * 后端 WanPingThread 支持 wanHosts 地址池 round-robin 轮询探测，
+    每轮探测依次选取下一个地址，避免对单一网址请求过频；
+    地址池变化时自动重置轮询索引；日志标记「池内第X/Y个」
+  * 配置持久化：保存设置后 config.json 写入 wanHosts 数组，
+    刷新页面后从配置恢复勾选状态
+  * 监控页 WAN 状态卡片显示当前探测目标地址，
+    池大于1时附加「轮询池 N 个地址」提示
+  * 新增 i18n 键 wanSelectedCount / wanPingPoolHint（中英文）
+  * 已验证：多选勾选、触发器摘要、config.json 写入、round-robin 轮转、
+    WAN 状态卡片、刷新持久化、中英文切换均正常
+- 修复向上展开的下拉菜单删除条目后背离按钮向上收缩的问题：
+  * 根因：向上翻转时以打开瞬间的内容高度一次性计算并写死面板 top 坐标，
+    删除条目（点 ×）后仅重建列表 DOM 不重新定位，top 不变而面板高度变小，
+    底边（top+高度）上移——向上展开时底边正是靠近触发按钮的一侧，
+    视觉上列表背离按钮向上收缩、间隙越拉越大
+  * 修复：抽取 positionWanDropdown(keepFlip) 统一定位。向下展开保持 top 锚定
+    （顶边钉在按钮下方 6px），向上展开改用 bottom 锚定（底边钉在按钮上方 6px），
+    内容增减时浏览器自动保持锚定边、由自由边吸收高度变化，
+    列表始终向菜单按钮方向伸缩；keepFlip=true 保持已判定方向不中途翻转
+  * 下拉打开状态下每次列表重渲染后按已定方向刷新锚定与 maxHeight，
+    支持勾选/删除/重置预设等所有内容变化路径；
+    触发按钮不可见（输入模式）时跳过重定位防止面板飘到视口顶部
+  * 两侧空间均不足时 maxHeight 按所选方向可用空间精确夹紧，
+    保持 8px 视口边距且不再遮挡触发按钮
+  * 已验证（受控视口 1920x1080/1366x768/1024x500 × 向下/向上/两侧不足
+    共 7 种组合）：向上展开删除条目 gap 恒 6px、锚定边不动、内容净减少时
+    自由边向按钮方向收缩；勾选/删除/重置预设内容增减均正确锚定
+"""

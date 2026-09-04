@@ -1,0 +1,72 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_TEMP_LOGFILE:-${TRIM_PKGVAR}/info.log}"
+
+log_msg() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >>"${LOG_FILE}"
+}
+
+APP_SRC_DIR="${TRIM_APPDEST}/server"
+VENV_DIR="${TRIM_PKGVAR}/.venv"
+PIP_INDEX="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+PIP_INDEX_BACKUP="https://pypi.org/simple"
+
+log_msg "Starting upgrade for ${TRIM_APPNAME:-FreePower} ${TRIM_APPVER:-1.0.0}"
+log_msg "App directory: ${TRIM_APPDEST}"
+log_msg "Data directory: ${TRIM_PKGVAR}"
+
+find_python() {
+  for candidate in /usr/bin/python3 /usr/local/bin/python3 /usr/bin/python3.11 /usr/bin/python3.12 /usr/bin/python3.10; do
+    if [ -x "${candidate}" ]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PYTHON_BIN=$(find_python)
+if [ -z "${PYTHON_BIN}" ]; then
+  log_msg "ERROR: Python3 not found on this system"
+  exit 1
+fi
+
+mkdir -p "${TRIM_PKGVAR}"
+
+if [ -d "${APP_SRC_DIR}/.venv" ] && [ ! -f "${APP_SRC_DIR}/.venv_migrated" ]; then
+  log_msg "Migrating old venv from app source dir to data dir..."
+  if [ ! -d "${VENV_DIR}" ]; then
+    cp -a "${APP_SRC_DIR}/.venv" "${VENV_DIR}" >>"${LOG_FILE}" 2>&1
+    if [ $? -ne 0 ]; then
+      log_msg "WARNING: Failed to migrate old venv, will create new one."
+      rm -rf "${VENV_DIR}"
+    fi
+  fi
+  rm -rf "${APP_SRC_DIR}/.venv"
+  touch "${APP_SRC_DIR}/.venv_migrated"
+  log_msg "Old venv migrated."
+fi
+
+if [ -d "${VENV_DIR}" ]; then
+  log_msg "Upgrading dependencies..."
+  if ! "${VENV_DIR}/bin/pip" install --quiet -r "${APP_SRC_DIR}/requirements.txt" -i ${PIP_INDEX} >>"${LOG_FILE}" 2>&1; then
+    log_msg "Primary mirror failed, trying backup..."
+    "${VENV_DIR}/bin/pip" install --quiet -r "${APP_SRC_DIR}/requirements.txt" -i ${PIP_INDEX_BACKUP} >>"${LOG_FILE}" 2>&1
+  fi
+  log_msg "Dependencies upgraded."
+else
+  log_msg "Creating virtual environment in ${VENV_DIR} with ${PYTHON_BIN}..."
+  "${PYTHON_BIN}" -m venv "${VENV_DIR}" >>"${LOG_FILE}" 2>&1
+  if ! "${VENV_DIR}/bin/pip" install --quiet --upgrade pip -i ${PIP_INDEX} >>"${LOG_FILE}" 2>&1; then
+    "${VENV_DIR}/bin/pip" install --quiet --upgrade pip -i ${PIP_INDEX_BACKUP} >>"${LOG_FILE}" 2>&1
+  fi
+  if ! "${VENV_DIR}/bin/pip" install --quiet -r "${APP_SRC_DIR}/requirements.txt" -i ${PIP_INDEX} >>"${LOG_FILE}" 2>&1; then
+    "${VENV_DIR}/bin/pip" install --quiet -r "${APP_SRC_DIR}/requirements.txt" -i ${PIP_INDEX_BACKUP} >>"${LOG_FILE}" 2>&1
+  fi
+  log_msg "Virtual environment created and dependencies installed."
+fi
+
+mkdir -p "${TRIM_PKGVAR}/logs"
+
+log_msg "Upgrade completed successfully."
+exit 0

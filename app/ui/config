@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "FreePower.Application": {
+            "title": "FreePower",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "",
+            "gatewayPrefix": "/app/FreePower",
+            "gatewaySocket": "app.sock",
+            "url": "/app/FreePower",
+            "allUsers": false
+        }
+    }
+}

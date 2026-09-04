@@ -1,0 +1,6 @@
+{
+  "stopApps": [],
+  "dockerContainers": [],
+  "shutdownOrder": [],
+  "startupOrder": []
+}

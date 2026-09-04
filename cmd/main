@@ -1,0 +1,381 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+DATA_DIR="${TRIM_PKGVAR}"
+
+APP_SRC_DIR="${TRIM_APPDEST}/server"
+VENV_DIR="${TRIM_PKGVAR}/.venv"
+PIP_INDEX="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+PIP_INDEX_BACKUP="https://pypi.org/simple"
+
+find_python() {
+  for candidate in /usr/bin/python3 /usr/local/bin/python3 /usr/bin/python3.11 /usr/bin/python3.12 /usr/bin/python3.10; do
+    if [ -x "${candidate}" ]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PYTHON_BIN=$(find_python)
+if [ -z "${PYTHON_BIN}" ]; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: Python3 not found" >>"${LOG_FILE}"
+  exit 1
+fi
+
+log_msg() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >>"${LOG_FILE}"
+}
+
+install_deps() {
+  local index_url="$1"
+  log_msg "Trying pip index: ${index_url}"
+
+  "${VENV_DIR}/bin/pip" install --upgrade pip -i "${index_url}" >>"${LOG_FILE}" 2>&1
+  if [ $? -ne 0 ]; then
+    log_msg "WARNING: Failed to upgrade pip with ${index_url}"
+    return 1
+  fi
+
+  "${VENV_DIR}/bin/pip" install -r "${APP_SRC_DIR}/requirements.txt" -i "${index_url}" >>"${LOG_FILE}" 2>&1
+  if [ $? -ne 0 ]; then
+    log_msg "WARNING: Failed to install dependencies with ${index_url}"
+    return 1
+  fi
+
+  return 0
+}
+
+migrate_old_venv() {
+  local old_venv="${APP_SRC_DIR}/.venv"
+  if [ -d "${old_venv}" ] && [ ! -d "${VENV_DIR}" ]; then
+    log_msg "Migrating venv from ${old_venv} to ${VENV_DIR}..."
+    cp -a "${old_venv}" "${VENV_DIR}" 2>>"${LOG_FILE}"
+    if [ $? -eq 0 ] && [ -f "${VENV_DIR}/bin/python" ]; then
+      log_msg "Old venv migrated successfully."
+    else
+      log_msg "WARNING: Failed to migrate old venv, will create new one."
+      rm -rf "${VENV_DIR}"
+    fi
+  fi
+}
+
+ensure_venv() {
+  migrate_old_venv
+
+  local needs_install=0
+
+  log_msg "ensure_venv: VENV_DIR=${VENV_DIR}, dir_exists=$([ -d "${VENV_DIR}" ] && echo yes || echo no), python_exists=$([ -f "${VENV_DIR}/bin/python" ] && echo yes || echo no), pip_exists=$([ -f "${VENV_DIR}/bin/pip" ] && echo yes || echo no)"
+  if [ ! -d "${VENV_DIR}" ] || [ ! -f "${VENV_DIR}/bin/python" ]; then
+    log_msg "Creating virtual environment in ${VENV_DIR} with ${PYTHON_BIN}..."
+    "${PYTHON_BIN}" -m venv "${VENV_DIR}" >>"${LOG_FILE}" 2>&1
+    if [ $? -ne 0 ]; then
+      log_msg "ERROR: Failed to create virtual environment with ${PYTHON_BIN}"
+      return 1
+    fi
+    needs_install=1
+  fi
+
+  if [ ! -f "${VENV_DIR}/bin/pip" ]; then
+    log_msg "pip not found in venv, bootstrapping..."
+    "${VENV_DIR}/bin/python" -m ensurepip --upgrade >>"${LOG_FILE}" 2>&1
+    if [ $? -ne 0 ]; then
+      log_msg "WARNING: ensurepip failed, reinstalling venv..."
+      rm -rf "${VENV_DIR}"
+      "${PYTHON_BIN}" -m venv "${VENV_DIR}" >>"${LOG_FILE}" 2>&1
+      if [ $? -ne 0 ]; then
+        log_msg "ERROR: Failed to recreate virtual environment"
+        return 1
+      fi
+    fi
+    needs_install=1
+  fi
+
+  if [ ${needs_install} -eq 0 ]; then
+    if "${VENV_DIR}/bin/python" -c "import uvicorn" 2>/dev/null; then
+      log_msg "uvicorn already installed, no install needed"
+    else
+      log_msg "uvicorn not installed, installing dependencies..."
+      needs_install=1
+    fi
+  fi
+
+  if [ ${needs_install} -eq 1 ]; then
+    log_msg "Installing dependencies..."
+
+    if install_deps "${PIP_INDEX}"; then
+      log_msg "Dependencies installed successfully from primary mirror."
+    elif install_deps "${PIP_INDEX_BACKUP}"; then
+      log_msg "Dependencies installed successfully from backup mirror."
+    else
+      log_msg "ERROR: Failed to install dependencies from all mirrors"
+      return 1
+    fi
+
+    if ! "${VENV_DIR}/bin/python" -c "import uvicorn" 2>/dev/null; then
+      log_msg "ERROR: uvicorn still not available after installation"
+      log_msg "Checking installed packages..."
+      "${VENV_DIR}/bin/pip" list >>"${LOG_FILE}" 2>&1
+      return 1
+    fi
+
+    log_msg "Dependencies verified successfully."
+  fi
+  return 0
+}
+
+start_process() {
+  if status; then
+    log_msg "Process already running, skip start"
+    return 0
+  fi
+  log_msg "No existing process, proceeding with start"
+
+  log_msg "Starting ${TRIM_APPNAME:-FreePower} ${TRIM_APPVER:-1.0.0}"
+  log_msg "App directory: ${TRIM_APPDEST}"
+  log_msg "Data directory: ${TRIM_PKGVAR}"
+  log_msg "Config directory: ${TRIM_PKGETC:-N/A}"
+  log_msg "TRIM_SERVICE_PORT=${TRIM_SERVICE_PORT:-not set}"
+  log_msg "Python binary: ${PYTHON_BIN}"
+  log_msg "VENV_DIR: ${VENV_DIR}"
+  log_msg "APP_SRC_DIR: ${APP_SRC_DIR}"
+  log_msg "Starting process ..."
+
+  ensure_venv
+  local venv_rc=$?
+  log_msg "ensure_venv returned: ${venv_rc}"
+  if [ ${venv_rc} -ne 0 ]; then
+    log_msg "ERROR: Failed to setup virtual environment or install dependencies"
+    return 1
+  fi
+
+  # run-as=root 时 venv 由 root 创建，须交给包用户执行（遵循飞牛 OS 权限规范）
+  if [ -n "${TRIM_USERNAME:-}" ] && [ -d "${VENV_DIR}" ]; then
+    PKG_GROUP="$(id -gn "${TRIM_USERNAME}" 2>/dev/null)"
+    if [ -n "${PKG_GROUP}" ]; then
+      chown -R "${TRIM_USERNAME}:${PKG_GROUP}" "${VENV_DIR}" 2>>"${LOG_FILE}"
+      log_msg "chown venv to ${TRIM_USERNAME}:${PKG_GROUP}"
+    fi
+  fi
+
+  VENV_PYTHON="${VENV_DIR}/bin/python"
+  if [ ! -x "${VENV_PYTHON}" ]; then
+    log_msg "ERROR: VENV_PYTHON not found or not executable: ${VENV_PYTHON}"
+    return 1
+  fi
+  log_msg "VENV_PYTHON: ${VENV_PYTHON}"
+
+  # 端口号仅从 manifest 的 service_port（通过 TRIM_SERVICE_PORT 环境变量）获取
+  # 应用配置统一在 config.json 中管理，不再使用 YAML 配置文件
+  LISTEN_PORT="${TRIM_SERVICE_PORT:-8080}"
+  log_msg "LISTEN_PORT (from manifest TRIM_SERVICE_PORT): ${LISTEN_PORT}"
+
+  local ui_dir="${TRIM_APPDEST}/ui"
+  if [ ! -d "${ui_dir}" ]; then
+    log_msg "ERROR: UI directory not found: ${ui_dir}"
+    return 1
+  fi
+
+  local serve_script="${APP_SRC_DIR}/server.py"
+  if [ ! -f "${serve_script}" ]; then
+    log_msg "ERROR: server.py not found: ${serve_script}"
+    return 1
+  fi
+
+  local socket_path="${TRIM_APPDEST}/app.sock"
+  # 清理旧 socket 文件
+  rm -f "${socket_path}"
+
+  local gateway_prefix="/app/${TRIM_APPNAME:-FreePower}"
+  CMD="\"${VENV_PYTHON}\" \"${serve_script}\" \"${ui_dir}\" ${LISTEN_PORT} \"${socket_path}\" \"${gateway_prefix}\""
+
+  log_msg "CMD = ${CMD}"
+  log_msg "Socket path = ${socket_path}"
+
+  # --- 启动特权助手守护进程（root，遵循飞牛 OS 权限规范） ---
+  PRIV_SOCK=""
+  PRIV_PID_FILE="${TRIM_PKGVAR}/priv_helper.pid"
+  local priv_script="${APP_SRC_DIR}/priv_helper.py"
+  if [ -n "${TRIM_USERNAME:-}" ] && [ -f "${priv_script}" ]; then
+    PKG_GROUP="$(id -gn "${TRIM_USERNAME}" 2>/dev/null)"
+    PRIV_SOCK_DIR="${TRIM_PKGVAR}/priv"
+    PRIV_SOCK="${PRIV_SOCK_DIR}/priv_helper.sock"
+    # 独立目录 0750 root:pkggroup（组不可写，防符号链接替换）
+    install -d -m 0750 -o root -g "${PKG_GROUP}" "${PRIV_SOCK_DIR}" 2>>"${LOG_FILE}"
+    rm -f "${PRIV_SOCK}"
+    "${VENV_PYTHON}" "${priv_script}" "${PRIV_SOCK}" "${TRIM_USERNAME}" >>"${LOG_FILE}" 2>&1 &
+    PRIV_PID=$!
+    printf "%s" "${PRIV_PID}" >"${PRIV_PID_FILE}"
+    log_msg "priv_helper started, PID=${PRIV_PID}, sock=${PRIV_SOCK}"
+    # 等待 socket 出现（最多 5s）
+    local _i=0
+    while [ ${_i} -lt 5 ] && [ ! -S "${PRIV_SOCK}" ]; do
+      sleep 1
+      _i=$((_i + 1))
+    done
+    if [ -S "${PRIV_SOCK}" ]; then
+      log_msg "SUCCESS: priv_helper socket created at ${PRIV_SOCK}"
+    else
+      log_msg "WARNING: priv_helper socket not created (continuing without privilege helper)"
+      PRIV_SOCK=""
+    fi
+  else
+    log_msg "WARNING: TRIM_USERNAME not set or priv_helper.py not found, privilege helper disabled (dev mode?)"
+  fi
+
+  # --- 以包用户身份启动 Web 服务（runuser 降权） ---
+  if [ -n "${TRIM_USERNAME:-}" ]; then
+    runuser -u "${TRIM_USERNAME}" -- env \
+      TRIM_USERNAME="${TRIM_USERNAME}" \
+      TRIM_RUN_USERNAME="${TRIM_RUN_USERNAME:-${TRIM_USERNAME}}" \
+      TRIM_PKGVAR="${TRIM_PKGVAR}" \
+      TRIM_APPDEST="${TRIM_APPDEST}" \
+      TRIM_APPNAME="${TRIM_APPNAME}" \
+      TRIM_APPVER="${TRIM_APPVER:-}" \
+      TRIM_SERVICE_PORT="${TRIM_SERVICE_PORT:-}" \
+      TRIM_ROOT="${TRIM_ROOT:-}" \
+      TRIM_PRIV_HELPER_SOCK="${PRIV_SOCK}" \
+      bash -c "${CMD}" >>"${LOG_FILE}" 2>&1 &
+  else
+    # 本地开发兜底（无 TRIM_USERNAME，直接以当前用户跑）
+    TRIM_PRIV_HELPER_SOCK="${PRIV_SOCK}" bash -c "${CMD}" >>"${LOG_FILE}" 2>&1 &
+  fi
+  local bg_pid=$!
+  printf "%s" "${bg_pid}" >"${PID_FILE}"
+  log_msg "Background process started, PID=${bg_pid}, PID_FILE=${PID_FILE}"
+
+  # 启动后验证进程是否存活
+  sleep 2
+  if check_process "${bg_pid}"; then
+    log_msg "SUCCESS: Process ${bg_pid} is still running after 2s"
+  else
+    log_msg "ERROR: Process ${bg_pid} exited immediately after startup"
+    log_msg "Check command output above for errors (e.g. cd failure, port in use)"
+    rm -f "${PID_FILE}"
+    return 1
+  fi
+
+  # 检查端口是否监听
+  if command -v ss >/dev/null 2>&1; then
+    if ss -tln 2>/dev/null | grep -q ":${LISTEN_PORT} "; then
+      log_msg "SUCCESS: Port ${LISTEN_PORT} is listening"
+    else
+      log_msg "WARNING: Port ${LISTEN_PORT} is not listening yet (process running but port not bound)"
+    fi
+  fi
+
+  # 检查 Unix socket 是否创建
+  if [ -S "${socket_path}" ]; then
+    log_msg "SUCCESS: Unix socket created at ${socket_path}"
+  else
+    log_msg "WARNING: Unix socket not found at ${socket_path}"
+  fi
+
+  return 0
+}
+
+stop_process() {
+  log_msg "Stopping process ..."
+
+  if [ -r "${PID_FILE}" ]; then
+    pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+
+    log_msg "pid=${pid}"
+    if ! check_process "${pid}"; then
+      rm -f "${PID_FILE}"
+      log_msg "remove pid file 1"
+      return
+    fi
+
+    log_msg "send TERM signal to PID:${pid}..."
+    kill -TERM ${pid} >>"${LOG_FILE}" 2>&1
+
+    local count=0
+    while check_process "${pid}" && [ $count -lt 300 ]; do
+      sleep 1
+      count=$((count + 1))
+      log_msg "waiting process terminal... (${count}s/300s)"
+    done
+
+    if check_process "${pid}"; then
+      log_msg "send KILL signal to PID:${pid}..."
+      kill -KILL "${pid}"
+      sleep 1
+      rm -f "${PID_FILE}"
+    else
+      log_msg "process killed... "
+      rm -f "${PID_FILE}"
+    fi
+    # 清理 Unix socket 文件
+    rm -f "${TRIM_APPDEST}/app.sock"
+    log_msg "socket file cleaned"
+  fi
+
+  # --- 停止特权助手守护进程 ---
+  PRIV_PID_FILE="${TRIM_PKGVAR}/priv_helper.pid"
+  if [ -r "${PRIV_PID_FILE}" ]; then
+    hp=$(head -n 1 "${PRIV_PID_FILE}" | tr -d '[:space:]')
+    if [ -n "${hp}" ] && check_process "${hp}"; then
+      log_msg "send TERM signal to priv_helper PID:${hp}..."
+      kill -TERM "${hp}" 2>>"${LOG_FILE}"
+      local hc=0
+      while check_process "${hp}" && [ ${hc} -lt 10 ]; do
+        sleep 1
+        hc=$((hc + 1))
+      done
+      if check_process "${hp}"; then
+        log_msg "send KILL signal to priv_helper PID:${hp}..."
+        kill -KILL "${hp}" 2>/dev/null
+      fi
+      log_msg "priv_helper stopped"
+    fi
+    rm -f "${PRIV_PID_FILE}"
+  fi
+  # 清理特权助手 socket 文件
+  rm -f "${TRIM_PKGVAR}/priv/priv_helper.sock" 2>/dev/null
+
+  return 0
+}
+
+check_process() {
+  local pid=$1
+  if kill -0 "${pid}" 2>/dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+status() {
+  if [ -f "${PID_FILE}" ]; then
+    pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+    if check_process "${pid}"; then
+      return 0
+    else
+      rm -f "${PID_FILE}"
+    fi
+  fi
+
+  return 1
+}
+
+case $1 in
+  start)
+    start_process
+    ;;
+  stop)
+    stop_process
+    ;;
+  status)
+    if status; then
+      exit 0
+    else
+      exit 3
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac
