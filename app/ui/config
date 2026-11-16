@@ -1,13 +1,13 @@
 {
     ".url": {
-        "FreePower.Application": {
-            "title": "FreePower",
+        "LastDisciple.Application": {
+            "title": "关门弟子",
             "icon": "images/icon_{0}.png",
             "type": "iframe",
             "protocol": "",
-            "gatewayPrefix": "/app/FreePower",
+            "gatewayPrefix": "/app/LastDisciple",
             "gatewaySocket": "app.sock",
-            "url": "/app/FreePower",
+            "url": "/app/LastDisciple",
             "allUsers": false
         }
     }

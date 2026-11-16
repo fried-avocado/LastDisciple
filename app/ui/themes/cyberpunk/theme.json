@@ -1,0 +1,13 @@
+{
+  "id": "cyberpunk",
+  "version": "1.0.0",
+  "name": {
+    "zh-CN": "赛博朋克",
+    "en": "Cyberpunk"
+  },
+  "description": {
+    "zh-CN": "霓虹光效与暗色玻璃拟态的赛博朋克主题（内置默认）",
+    "en": "Neon-glow dark glassmorphism cyberpunk theme (built-in default)"
+  },
+  "author": "LastDisciple"
+}

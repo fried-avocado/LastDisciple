@@ -1,0 +1,13 @@
+{
+  "id": "pixel-retro",
+  "version": "1.0.0",
+  "name": {
+    "zh-CN": "像素复古",
+    "en": "Pixel Retro"
+  },
+  "description": {
+    "zh-CN": "复古 8-bit 像素风格：方角硬阴影、棋盘格纹理、等宽像素字体与 PICO 风调色板",
+    "en": "Retro 8-bit pixel style: squared corners, hard shadows, checkerboard texture, monospace pixel font and PICO-style palette"
+  },
+  "author": "LastDisciple"
+}

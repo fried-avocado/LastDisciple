@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FreePower 业务后端服务
+LastDisciple 业务后端服务
 
 架构模式（遵循 serve.py）：
 - 同时监听 TCP 端口和 Unix domain socket，兼容 fnOS 统一网关
@@ -9,7 +9,7 @@ FreePower 业务后端服务
 
 业务功能：
 - Ping 网关监控（固定/自适应探测模式）
-- 配置管理（基础/高级/IoT/通知）
+- 配置管理（基础/高级）
 - 静态文件服务
 - RESTful API 路由
 
@@ -21,13 +21,19 @@ FreePower 业务后端服务
   python web_server.py
 """
 import json
+
+import math
+import io
 import os
+import re
+import shutil
 import socket
 import socketserver
 import subprocess
 import sys
 import threading
 import time
+import zipfile
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, unquote
@@ -41,9 +47,12 @@ STATIC_DIR = os.path.join(APP_DIR, "ui")                        # app/ui/
 
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 ADVANCED_CONFIG_FILE = os.path.join(BASE_DIR, "advanced_config.json")
-IOT_CONFIG_FILE = os.path.join(BASE_DIR, "iot_config.json")
-NOTIFICATION_CONFIG_FILE = os.path.join(BASE_DIR, "notification_config.json")
 LOG_FILE = os.path.join(BASE_DIR, "ping.log")
+
+THEMES_DIR = os.path.join(STATIC_DIR, "themes")                 # app/ui/themes/
+THEME_ID_RE = re.compile(r'^[a-z0-9][a-z0-9_-]{0,63}$')
+MAX_THEME_UPLOAD_BYTES = 10 * 1024 * 1024                       # 10MB
+MAX_THEME_CSS_BYTES = 2 * 1024 * 1024                           # 单个 theme.css 上限
 
 # 特权助手 Unix socket 路径（由 cmd/main 以 root 启动 helper 时注入环境变量）
 PRIV_HELPER_SOCKET = os.environ.get('TRIM_PRIV_HELPER_SOCK', '')
@@ -77,6 +86,100 @@ def write_log(message):
                 f.write(log_line)
     except Exception:
         pass
+
+
+# ========== 主题包辅助函数 ==========
+
+def is_valid_theme_id(theme_id):
+    """主题 ID：小写字母/数字开头，仅含小写字母数字下划线连字符，防路径穿越。"""
+    return isinstance(theme_id, str) and bool(THEME_ID_RE.fullmatch(theme_id))
+
+
+def theme_dir(theme_id):
+    return os.path.join(THEMES_DIR, theme_id)
+
+
+def read_theme_meta(theme_id):
+    """读取主题包元数据 theme.json；不存在或解析失败返回 None。"""
+    meta_path = os.path.join(theme_dir(theme_id), "theme.json")
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def validate_theme_meta(meta):
+    """校验 theme.json 结构，返回错误信息或 None。"""
+    if not isinstance(meta, dict):
+        return "theme.json must be a JSON object"
+    if not is_valid_theme_id(meta.get("id")):
+        return "theme.json: invalid or missing 'id' (lowercase letters/digits/-/_)"
+    names = meta.get("name")
+    if not isinstance(names, dict) or not any(
+        isinstance(v, str) and v.strip() for v in names.values()
+    ):
+        return "theme.json: 'name' must be an i18n map like {\"en\": \"...\", \"zh-CN\": \"...\"}"
+    return None
+
+
+def install_theme_files(theme_id, files):
+    """将 {文件名: bytes} 原子写入主题目录（先写临时目录再替换）。"""
+    os.makedirs(THEMES_DIR, exist_ok=True)
+    tmp_dir = os.path.join(THEMES_DIR, f".tmp-{os.getpid()}-{theme_id}")
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    os.makedirs(tmp_dir)
+    try:
+        for name, content in files.items():
+            with open(os.path.join(tmp_dir, name), "wb") as f:
+                f.write(content)
+        target = theme_dir(theme_id)
+        if os.path.exists(target):
+            shutil.rmtree(target)
+        os.replace(tmp_dir, target)
+    except Exception:
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+
+
+def extract_theme_packages_from_zip(data):
+    """从 zip 字节流提取主题包。
+
+    支持两种布局：
+      - 单主题包：根目录 theme.json + theme.css
+      - 备份包：<id>/theme.json + <id>/theme.css（多主题）
+    返回 [(theme_id_hint, {文件名: bytes})]；布局非法抛 ValueError。
+    """
+    packages = []
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        single = {}
+        multi = {}
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            name = info.filename.replace("\\", "/")
+            parts_all = [p for p in name.split("/") if p]
+            if name.startswith("/") or any(p == ".." for p in parts_all):
+                raise ValueError(f"unsafe entry in archive: {info.filename}")
+            parts = parts_all
+            if len(parts) == 1 and parts[0] in ("theme.json", "theme.css"):
+                single[parts[0]] = zf.read(info)
+            elif (
+                len(parts) == 2
+                and parts[1] in ("theme.json", "theme.css")
+                and is_valid_theme_id(parts[0])
+            ):
+                multi.setdefault(parts[0], {})[parts[1]] = zf.read(info)
+            # 其他文件（如 README/预览图）忽略
+        if single:
+            packages.append(("", single))
+        for folder, files in multi.items():
+            packages.append((folder, files))
+    if not packages:
+        raise ValueError("archive contains no theme.json/theme.css")
+    return packages
 
 
 # ========== 特权助手客户端（临时 root 权限：申请 → 使用 → 释放） ==========
@@ -174,6 +277,284 @@ class PrivilegeClient:
             raise PrivilegeOperationError(err)
         write_log(f"[priv] EXECUTE op={op} params={params} req_id={self._id} status=OK")
         return resp.get('data')
+
+
+# ========== 关闭序列执行（手动/自动共用） ==========
+
+def execute_shutdown_sequence(power_off=False, deadline=None):
+    """按 shutdownOrder 顺序停止全部配置项，可选在末尾关闭系统。
+
+    power_off=True 时在全部项处理完毕后执行系统关机（断线自动关机闭环）。
+    deadline 为 time.monotonic() 绝对时刻：到点后剩余项全部标记跳过，
+    但 power_off=True 时仍照常执行系统关机（总超时直接关机语义）。
+    每次停止均记录耗时到 stop_stats.json（平均/最近/次数）。
+    返回逐项结果列表（含可选的 system-poweroff 项）。
+    """
+    cfg = AdvancedConfig().load()
+    order = cfg.shutdown_order or []
+    results = []
+    skipped_count = 0
+    write_log(f"[exec] shutdown_sequence → items={len(order)} power_off={power_off} "
+              f"timeout={'none' if deadline is None else 'set'}")
+    if not PRIV_HELPER_SOCKET:
+        write_log("[exec] shutdown_sequence → privilege helper not configured")
+        items = [i for i in order if i.get('name')]
+        if power_off:
+            items.append({'name': 'system-poweroff', 'type': 'system'})
+        return [{'name': i.get('name', ''), 'type': i.get('type', 'app'),
+                 'success': False, 'error': 'root privilege helper unavailable (not on fnOS)'}
+                for i in items]
+    try:
+        with PrivilegeClient() as priv:
+            for item in order:
+                name = item.get('name', '')
+                t = item.get('type', 'app')
+                if not name:
+                    continue
+                # 总超时到点：跳过剩余项（仍会执行关机）
+                if deadline is not None and time.monotonic() >= deadline:
+                    results.append({'name': name, 'type': t, 'success': False, 'skipped': True,
+                                    'error': '关闭总超时已到，跳过'})
+                    skipped_count += 1
+                    continue
+                t0 = time.monotonic()
+                try:
+                    r = priv.execute('stop', {'type': t, 'name': name})
+                    duration = time.monotonic() - t0
+                    record_stop_time(name, t, duration)
+                    write_log(f"[exec] stop {t}:{name} ok in {duration:.2f}s")
+                    results.append({'name': name, 'type': t, 'success': True,
+                                    'message': r.get('message', ''), 'duration': round(duration, 2)})
+                except PrivilegeOperationError as e:
+                    duration = time.monotonic() - t0
+                    record_stop_time(name, t, duration)
+                    results.append({'name': name, 'type': t, 'success': False,
+                                    'error': str(e), 'duration': round(duration, 2)})
+            if skipped_count:
+                write_log(f"[exec] shutdown_sequence → {skipped_count} item(s) skipped by timeout")
+            if power_off:
+                try:
+                    r = priv.execute('poweroff', {})
+                    results.append({'name': 'system-poweroff', 'type': 'system', 'success': True,
+                                    'message': r.get('message', '')})
+                    write_log("[exec] shutdown_sequence → system poweroff initiated")
+                except PrivilegeOperationError as e:
+                    results.append({'name': 'system-poweroff', 'type': 'system', 'success': False, 'error': str(e)})
+                    write_log(f"[exec] shutdown_sequence → poweroff failed: {e}")
+    except PrivilegeError as e:
+        write_log(f"[exec] shutdown_sequence → privilege_error: {e}")
+        items = [i for i in order if i.get('name')]
+        if power_off:
+            items.append({'name': 'system-poweroff', 'type': 'system'})
+        return [{'name': i.get('name', ''), 'type': i.get('type', 'app'),
+                 'success': False, 'error': f'root privilege helper unavailable: {e}'}
+                for i in items]
+    return results
+
+
+# ========== 应用停止耗时统计 ==========
+
+STOP_STATS_FILE = os.path.join(BASE_DIR, 'stop_stats.json')
+
+def _load_stop_stats():
+    try:
+        with open(STOP_STATS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_stop_stats(stats):
+    try:
+        with open(STOP_STATS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(stats, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def record_stop_time(name, item_type, duration):
+    """记录单次应用停止耗时（秒），维护次数/累计/最近/平均。"""
+    try:
+        stats = _load_stop_stats()
+        key = f"{item_type}:{name}"
+        entry = stats.get(key, {'count': 0, 'total': 0.0, 'last': 0.0, 'avg': 0.0})
+        entry['count'] = int(entry.get('count', 0)) + 1
+        entry['total'] = round(float(entry.get('total', 0.0)) + duration, 3)
+        entry['last'] = round(duration, 3)
+        entry['avg'] = round(entry['total'] / entry['count'], 3)
+        stats[key] = entry
+        _save_stop_stats(stats)
+    except Exception:
+        pass
+
+
+# ========== 断线自动关机状态机 ==========
+
+def execute_startup_sequence(only_names=None):
+    """按 startupOrder 顺序启动全部配置项，可选仅启动指定名称的项。
+
+    only_names 非空时仅处理名称在集合内的项（开机失败重试场景）。
+    返回逐项结果列表。
+    """
+    cfg = AdvancedConfig().load()
+    order = cfg.startup_order or []
+    results = []
+    write_log(f"[exec] startup_sequence → items={len(order)} only={len(only_names) if only_names else 'all'}")
+    if not PRIV_HELPER_SOCKET:
+        write_log("[exec] startup_sequence → privilege helper not configured")
+        return [{'name': i.get('name', ''), 'type': i.get('type', 'app'),
+                 'success': False, 'error': 'root privilege helper unavailable (not on fnOS)'}
+                for i in order if i.get('name') and (only_names is None or i.get('name') in only_names)]
+    try:
+        with PrivilegeClient() as priv:
+            for item in order:
+                name = item.get('name', '')
+                t = item.get('type', 'app')
+                if not name or (only_names is not None and name not in only_names):
+                    continue
+                try:
+                    r = priv.execute('start', {'type': t, 'name': name})
+                    results.append({'name': name, 'type': t, 'success': True, 'message': r.get('message', '')})
+                except PrivilegeOperationError as e:
+                    results.append({'name': name, 'type': t, 'success': False, 'error': str(e)})
+    except PrivilegeError as e:
+        write_log(f"[exec] startup_sequence → privilege_error: {e}")
+        return [{'name': i.get('name', ''), 'type': i.get('type', 'app'),
+                 'success': False, 'error': f'root privilege helper unavailable: {e}'}
+                for i in order if i.get('name') and (only_names is None or i.get('name') in only_names)]
+    return results
+
+
+class AutoShutdownController:
+    """断线自动关机闭环控制器。
+
+    状态迁移：
+      disabled  : 功能未启用，不计数不触发
+      armed     : 监控中，等待断线判定
+      triggered : 已触发关机序列；等待网络恢复确认后重新武装，防止重复触发
+
+    判定：所选触发源连续失败 ≥ failure_threshold → 触发；
+    恢复：触发后相关源连续成功 ≥ recovery_threshold → 重新武装。
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.state = "pending"  # 初始待武装：需先探测成功才进入 armed，防止开机即误关机
+        self.trigger_source = None
+        self.triggered_at = None
+        self.last_reason = ""
+        self.last_results = None
+        self._lan_fail = 0
+        self._wan_fail = 0
+        self._recover_ok = 0
+
+    @staticmethod
+    def _relevant(source, target):
+        return target == "any" or source == target
+
+    def snapshot(self):
+        with self._lock:
+            return {
+                "state": self.state,
+                "triggerSource": self.trigger_source,
+                "triggeredAt": self.triggered_at,
+                "lastReason": self.last_reason,
+                "lastResults": self.last_results,
+                "consecutiveLoss": {"lan": self._lan_fail, "wan": self._wan_fail}
+            }
+
+    def on_probe(self, source, success):
+        try:
+            config = Config().load()
+        except Exception:
+            return
+        if not config.auto_shutdown_enabled:
+            with self._lock:
+                if self.state != "disabled":
+                    write_log("⛔ 自动关机：功能已关闭，控制器复位")
+                self.state = "disabled"
+            return
+
+        target = config.auto_shutdown_target if config.auto_shutdown_target in ("lan", "wan", "any") else "any"
+        fail_threshold = max(1, int(config.auto_shutdown_failure_threshold or 1))
+        recover_threshold = max(1, int(config.auto_shutdown_recovery_threshold or 1))
+
+        triggered = False
+        with self._lock:
+            if self.state == "disabled":
+                # 功能从关闭切换为启用，进入待武装状态（等待首次探测成功确认）
+                self.state = "pending"
+                write_log("🟡 自动关机：已启用，待武装（等待首次探测成功）")
+            if self.state == "pending":
+                # 待武装：相关源探测成功后才进入 armed，网络未确认连通前不触发关机
+                if success and self._relevant(source, target):
+                    self.state = "armed"
+                    self._lan_fail = 0
+                    self._wan_fail = 0
+                    write_log(f"🟢 自动关机：{source.upper()} 探测成功，进入武装监控状态")
+                return
+            if self.state == "triggered":
+                # 等待恢复确认
+                if success and self._relevant(source, target):
+                    self._recover_ok += 1
+                    if self._recover_ok >= recover_threshold:
+                        write_log(f"🔁 自动关机：网络恢复已确认（连续成功 {self._recover_ok} 次），重新武装")
+                        self._recover_ok = 0
+                        self._lan_fail = 0
+                        self._wan_fail = 0
+                        self.state = "armed"
+                else:
+                    self._recover_ok = 0
+                return
+
+            # armed：更新失败计数
+            if source == "lan":
+                self._lan_fail = 0 if success else self._lan_fail + 1
+                fail = self._lan_fail
+            else:
+                self._wan_fail = 0 if success else self._wan_fail + 1
+                fail = self._wan_fail
+
+            if not self._relevant(source, target):
+                return
+            if success or fail < fail_threshold:
+                return
+
+            # 判定断线 → 触发
+            self.state = "triggered"
+            self.trigger_source = source
+            self.triggered_at = time.strftime('%Y-%m-%d %H:%M:%S')
+            self.last_reason = f"{source.upper()} 连续失败 {fail} 次（阈值 {fail_threshold}）"
+            self.last_results = None
+            self._recover_ok = 0
+            triggered = True
+            write_log(f"⚡ 自动关机触发：{self.last_reason}，开始执行关闭序列")
+
+        # 锁外以工作线程执行序列，避免阻塞探测循环
+        if triggered:
+            threading.Thread(target=self._execute, daemon=True).start()
+
+    def _execute(self):
+        try:
+            try:
+                cfg = Config().load()
+                power_off = bool(getattr(cfg, 'auto_shutdown_power_off', True))
+                timeout = int(getattr(cfg, 'shutdown_timeout_seconds', 0) or 0)
+            except Exception:
+                power_off = True
+                timeout = 0
+            deadline = (time.monotonic() + timeout) if timeout > 0 else None
+            results = execute_shutdown_sequence(power_off=power_off, deadline=deadline)
+            ok = sum(1 for r in results if r.get('success'))
+            skipped = sum(1 for r in results if r.get('skipped'))
+            self.last_results = {"total": len(results), "ok": ok, "failed": len(results) - ok,
+                                 "skippedByTimeout": skipped}
+            write_log(f"⚡ 自动关机序列执行完成：共 {len(results)} 项，成功 {ok}，"
+                      f"失败 {len(results) - ok}（其中超时跳过 {skipped}）")
+        except Exception as e:
+            self.last_results = {"error": str(e)}
+            write_log(f"⚡ 自动关机序列执行异常: {e}")
+
+
+auto_shutdown = AutoShutdownController()
 
 
 # ========== 自适应探测算法 ==========
@@ -433,6 +814,7 @@ class PingThread(threading.Thread):
                             write_log(f"🔄 已切换到固定间隔探测模式 - 间隔: {base_interval}秒")
 
                 connected, error, response_time = self._probe(gateway)
+                auto_shutdown.on_probe('lan', connected)
 
                 with self._config_lock:
                     if self.current_mode == "adaptive" and self.adaptive_algorithm is not None:
@@ -628,6 +1010,7 @@ class WanPingThread(threading.Thread):
                             write_log(f"🔄 外网探测：已切换到固定间隔模式 - 间隔: {base_interval}秒")
 
                 connected, error, response_time = self._probe(wan_host)
+                auto_shutdown.on_probe('wan', connected)
                 self._total_probes += 1
                 if not connected:
                     self._failed_probes += 1
@@ -697,7 +1080,7 @@ class WanPingThread(threading.Thread):
 # ========== 配置类 ==========
 
 class Config:
-    """基础配置（探测间隔、网关地址、防抖、调试模式、探测模式）。
+    """基础配置（探测间隔、网关地址、探测模式）。
 
     网关地址拆分为：
       - lan_gateway：内网网关（未手动设置时自动获取局域网默认网关）
@@ -711,9 +1094,15 @@ class Config:
         self.wan_host = ""
         self.wan_hosts = []                # 外网轮询地址池（用户勾选的多个地址）
         self.wan_ping_enabled = False      # 外网多线程 ping 探测开关
-        self.debounce_time = 10
-        self.debug = True
-        self.probing_mode = "fixed"
+        self.probing_mode = "fixed"        # 探测模式: fixed / adaptive
+        self.auto_shutdown_enabled = False        # 断线自动关机开关
+        self.auto_shutdown_target = "any"         # 触发源: lan / wan / any
+        self.auto_shutdown_failure_threshold = 5  # 连续失败判定阈值（次）
+        self.auto_shutdown_recovery_threshold = 3 # 恢复确认阈值（次）
+        self.auto_shutdown_power_off = True       # 自动触发时在关闭序列末尾执行系统关机
+        self.shutdown_timeout_seconds = 0         # 关闭序列总超时（秒，0=不限制，超时后跳过剩余项直接关机）
+        self.shutdown_timeout_buffer_ratio = 0.10 # 测得耗时之上的富裕比率（测试按钮建议值 = 总和 × (1 + 比率)）
+        self.theme_package = "cyberpunk"   # 当前主题包 ID（config.json 缺失时的默认值；此前仅在 load() 读到文件时赋值，全新安装访问该属性会抛 AttributeError）
 
     def load(self):
         if os.path.exists(CONFIG_FILE):
@@ -725,9 +1114,15 @@ class Config:
                     self.lan_gateway = data.get('lanGateway', data.get('lan_gateway', ''))
                     self.wan_host = data.get('wanHost', data.get('wan_host', ''))
                     self.wan_ping_enabled = data.get('wanPingEnabled', data.get('wan_ping_enabled', False))
-                    self.debounce_time = data.get('debounceTime', 10)
-                    self.debug = data.get('debug', True)
                     self.probing_mode = data.get('probingMode', "fixed")
+                    self.auto_shutdown_enabled = data.get('autoShutdownEnabled', False)
+                    self.auto_shutdown_target = data.get('autoShutdownTarget', "any")
+                    self.auto_shutdown_failure_threshold = data.get('autoShutdownFailureThreshold', 5)
+                    self.auto_shutdown_recovery_threshold = data.get('autoShutdownRecoveryThreshold', 3)
+                    self.auto_shutdown_power_off = bool(data.get('autoShutdownPowerOff', True))
+                    self.shutdown_timeout_seconds = data.get('shutdownTimeoutSeconds', 0)
+                    self.shutdown_timeout_buffer_ratio = data.get('shutdownTimeoutBufferRatio', 0.10)
+                    self.theme_package = data.get('themePackage', "cyberpunk")
                     # 外网轮询地址池：优先 wanHosts 数组；缺失时回退到单个 wanHost
                     raw_hosts = data.get('wanHosts', data.get('wan_hosts', []))
                     if isinstance(raw_hosts, list):
@@ -753,9 +1148,15 @@ class Config:
                     'wanHost': self.wan_host,
                     'wanHosts': self.wan_hosts,
                     'wanPingEnabled': self.wan_ping_enabled,
-                    'debounceTime': self.debounce_time,
-                    'debug': self.debug,
-                    'probingMode': self.probing_mode
+                    'autoShutdownEnabled': self.auto_shutdown_enabled,
+                    'autoShutdownTarget': self.auto_shutdown_target,
+                    'autoShutdownFailureThreshold': self.auto_shutdown_failure_threshold,
+                    'autoShutdownRecoveryThreshold': self.auto_shutdown_recovery_threshold,
+                    'autoShutdownPowerOff': self.auto_shutdown_power_off,
+                    'shutdownTimeoutSeconds': self.shutdown_timeout_seconds,
+                    'shutdownTimeoutBufferRatio': self.shutdown_timeout_buffer_ratio,
+                    'probingMode': self.probing_mode,
+                    'themePackage': self.theme_package
                 }, f, indent=2)
             return True
         except Exception as e:
@@ -807,11 +1208,13 @@ def detect_default_gateway():
 
 
 class AdvancedConfig:
-    """高级配置（停止应用列表、Docker 容器列表、应用关闭/启动顺序）。"""
+    """高级配置（应用关闭/启动顺序）。
+
+    历史上的 stopApps/dockerContainers 扁平列表已移除，
+    统一由 shutdownOrder/startupOrder 表达（type 为 'app' 或 'docker'）。
+    """
 
     def __init__(self):
-        self.stop_apps = []
-        self.docker_containers = []
         # 关闭顺序：[{name, type}]，type 为 'app' 或 'docker'
         self.shutdown_order = []
         # 启动顺序：默认为关闭顺序的逆序，但可由用户独立手动调整
@@ -822,8 +1225,6 @@ class AdvancedConfig:
             try:
                 with open(ADVANCED_CONFIG_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    self.stop_apps = data.get('stopApps', [])
-                    self.docker_containers = data.get('dockerContainers', [])
                     self.shutdown_order = data.get('shutdownOrder', [])
                     self.startup_order = data.get('startupOrder', [])
             except Exception as e:
@@ -834,85 +1235,12 @@ class AdvancedConfig:
         try:
             with open(ADVANCED_CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump({
-                    'stopApps': self.stop_apps,
-                    'dockerContainers': self.docker_containers,
                     'shutdownOrder': self.shutdown_order,
                     'startupOrder': self.startup_order
                 }, f, indent=2)
             return True
         except Exception as e:
             print(f"Error saving advanced config: {e}")
-            return False
-
-
-class IotConfig:
-    """IoT 平台配置（阿里云等）。"""
-
-    def __init__(self):
-        self.platform = "aliyun"
-        self.device_name = ""
-        self.product_key = ""
-        self.device_secret = ""
-        self.region = "cn-shanghai"
-        self.enabled = False
-
-    def load(self):
-        if os.path.exists(IOT_CONFIG_FILE):
-            try:
-                with open(IOT_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.platform = data.get('platform', "aliyun")
-                    self.device_name = data.get('deviceName', "")
-                    self.product_key = data.get('productKey', "")
-                    self.device_secret = data.get('deviceSecret', "")
-                    self.region = data.get('region', "cn-shanghai")
-                    self.enabled = data.get('enabled', False)
-            except Exception as e:
-                print(f"Error loading IoT config: {e}")
-        return self
-
-    def save(self):
-        try:
-            with open(IOT_CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'platform': self.platform,
-                    'deviceName': self.device_name,
-                    'productKey': self.product_key,
-                    'deviceSecret': self.device_secret,
-                    'region': self.region,
-                    'enabled': self.enabled
-                }, f, indent=2)
-            return True
-        except Exception as e:
-            print(f"Error saving IoT config: {e}")
-            return False
-
-
-class NotificationConfig:
-    """通知渠道配置。"""
-
-    def __init__(self):
-        self.channels = []
-
-    def load(self):
-        if os.path.exists(NOTIFICATION_CONFIG_FILE):
-            try:
-                with open(NOTIFICATION_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.channels = data.get('channels', [])
-            except Exception as e:
-                print(f"Error loading notification config: {e}")
-        return self
-
-    def save(self):
-        try:
-            with open(NOTIFICATION_CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'channels': self.channels
-                }, f, indent=2)
-            return True
-        except Exception as e:
-            print(f"Error saving notification config: {e}")
             return False
 
 
@@ -924,11 +1252,11 @@ class GatewayMixin:
     1. address_string 崩溃：Unix socket 的 client_address 是空字符串，
        默认 self.client_address[0] 取首字符会抛 IndexError，
        导致 send_error/log_message 失败，网关收不到有效响应返回 502。
-    2. 路径前缀：网关转发请求时路径带 gatewayPrefix（如 /app/FreePower），
+    2. 路径前缀：网关转发请求时路径带 gatewayPrefix（如 /app/LastDisciple），
        需要去掉前缀才能正确路由到业务 API 和静态文件。
     """
 
-    gateway_prefix = "/app/FreePower"
+    gateway_prefix = "/app/LastDisciple"
 
     def address_string(self):
         """修复 Unix socket 下 client_address 为空字符串导致的 IndexError。"""
@@ -940,7 +1268,7 @@ class GatewayMixin:
             return "unix"
 
     def strip_gateway_prefix(self, path):
-        """去掉网关前缀（如 /app/FreePower），返回业务路径。"""
+        """去掉网关前缀（如 /app/LastDisciple），返回业务路径。"""
         prefix = self.gateway_prefix
         if path.startswith(prefix):
             path = path[len(prefix):]
@@ -1047,13 +1375,13 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_url = urlparse(self.path)
         original_path = parsed_url.path
-        # 去掉网关前缀（如 /app/FreePower），兼容直连和网关两种访问方式
+        # 去掉网关前缀（如 /app/LastDisciple），兼容直连和网关两种访问方式
         path = self.strip_gateway_prefix(original_path)
 
         # 根路径无尾部斜杠时301重定向，确保前端相对路径（./api/...）能正确解析。
-        # 浏览器将无尾部斜杠的URL（如 /app/FreePower）视为"文件"，
-        # 相对路径 ./api/config 会替换文件名变为 /app/api/config 而非 /app/FreePower/api/config。
-        # 301 到 /app/FreePower/ 后浏览器将 /app/FreePower/ 视为"目录"，相对路径正确追加。
+        # 浏览器将无尾部斜杠的URL（如 /app/LastDisciple）视为"文件"，
+        # 相对路径 ./api/config 会替换文件名变为 /app/api/config 而非 /app/LastDisciple/api/config。
+        # 301 到 /app/LastDisciple/ 后浏览器将 /app/LastDisciple/ 视为"目录"，相对路径正确追加。
         if path == '/' and not original_path.endswith('/'):
             self.send_response(301)
             self.send_header('Location', original_path + '/')
@@ -1070,18 +1398,24 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
             self.handle_get_system_apps()
         elif path == '/api/docker-containers':
             self.handle_get_docker_containers_api()
-        elif path == '/api/iot-config':
-            self.handle_get_iot_config()
-        elif path == '/api/notification-config':
-            self.handle_get_notification_config()
         elif path == '/api/status':
             self.handle_get_status()
+        elif path == '/api/stop-stats':
+            self.handle_get_stop_stats()
         elif path == '/api/wan-status':
             self.handle_get_wan_status()
         elif path == '/api/logs':
             self.handle_get_logs()
+        elif path == '/api/themes':
+            self.handle_list_themes()
+        elif path == '/api/themes/backup':
+            self.handle_backup_themes()
         else:
-            self.serve_static_file(path)
+            m = re.fullmatch(r'/api/themes/([a-z0-9][a-z0-9_-]{0,63})/download', path)
+            if m:
+                self.handle_download_theme(m.group(1))
+            else:
+                self.serve_static_file(path)
 
     def do_POST(self):
         parsed_url = urlparse(self.path)
@@ -1094,16 +1428,20 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
             self.handle_post_config(post_data)
         elif path == '/api/advanced-config':
             self.handle_post_advanced_config(post_data)
-        elif path == '/api/iot-config':
-            self.handle_post_iot_config(post_data)
-        elif path == '/api/notification-config':
-            self.handle_post_notification_config(post_data)
         elif path == '/api/app-control':
             self.handle_app_control(post_data)
         elif path == '/api/execute-shutdown':
             self.handle_execute_shutdown(post_data)
         elif path == '/api/execute-startup':
             self.handle_execute_startup(post_data)
+        elif path == '/api/test-shutdown-timing':
+            self.handle_test_shutdown_timing(post_data)
+        elif path == '/api/test-stop-item':
+            self.handle_test_stop_item(post_data)
+        elif path == '/api/themes/upload':
+            self.handle_upload_theme(post_data)
+        elif path == '/api/themes/active':
+            self.handle_set_active_theme(post_data)
         else:
             self.send_error(404, "Not Found")
 
@@ -1184,6 +1522,176 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
         except (ConnectionAbortedError, BrokenPipeError, OSError):
             pass
 
+    # --- API: 主题包管理 ---
+
+    def handle_list_themes(self):
+        try:
+            active = Config().load().theme_package
+            themes = []
+            if os.path.isdir(THEMES_DIR):
+                for entry in sorted(os.listdir(THEMES_DIR)):
+                    if not is_valid_theme_id(entry):
+                        continue
+                    meta = read_theme_meta(entry)
+                    if not isinstance(meta, dict):
+                        write_log(f"[themes] 跳过无效主题目录: {entry}")
+                        continue
+                    themes.append({
+                        'id': meta.get('id', entry),
+                        'name': meta.get('name', {}),
+                        'version': meta.get('version', ''),
+                        'author': meta.get('author', ''),
+                        'description': meta.get('description', {}),
+                        'active': entry == active
+                    })
+            self.send_json_response(200, {'success': True, 'data': {'themes': themes, 'active': active}})
+        except (ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
+        except Exception as e:
+            write_log(f"[themes] GET /api/themes 异常: {e}")
+            self.send_json_response(500, {'success': False, 'error': str(e)})
+
+    def handle_set_active_theme(self, post_data):
+        try:
+            data = json.loads(post_data)
+            theme_id = data.get('id')
+            if not is_valid_theme_id(theme_id):
+                self.send_json_response(400, {'success': False, 'error': 'invalid theme id'})
+                return
+            if not os.path.isfile(os.path.join(theme_dir(theme_id), 'theme.json')):
+                self.send_json_response(404, {'success': False, 'error': f'theme not found: {theme_id}'})
+                return
+            config = Config().load()
+            config.theme_package = theme_id
+            if not config.save():
+                self.send_json_response(500, {'success': False, 'error': 'failed to save config'})
+                return
+            write_log(f"[themes] 激活主题包: {theme_id}")
+            self.send_json_response(200, {'success': True, 'data': {'active': theme_id}})
+        except json.JSONDecodeError:
+            self.send_json_response(400, {'success': False, 'error': 'invalid json body'})
+        except (ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
+        except Exception as e:
+            write_log(f"[themes] POST /api/themes/active 异常: {e}")
+            self.send_json_response(500, {'success': False, 'error': str(e)})
+
+    def handle_upload_theme(self, post_data):
+        try:
+            if len(post_data) > MAX_THEME_UPLOAD_BYTES:
+                self.send_json_response(413, {'success': False, 'error': 'theme package too large (max 10MB)'})
+                return
+            if not post_data.startswith(b'PK'):
+                self.send_json_response(400, {'success': False, 'error': 'only .zip theme packages are supported'})
+                return
+
+            imported = []
+            try:
+                packages = extract_theme_packages_from_zip(post_data)
+            except (zipfile.BadZipFile, ValueError) as e:
+                self.send_json_response(400, {'success': False, 'error': f'invalid theme package: {e}'})
+                return
+
+            for hint_id, files in packages:
+                if 'theme.json' not in files or 'theme.css' not in files:
+                    self.send_json_response(400, {'success': False, 'error': 'package must contain theme.json and theme.css'})
+                    return
+                if len(files['theme.css']) == 0 or len(files['theme.css']) > MAX_THEME_CSS_BYTES:
+                    self.send_json_response(400, {'success': False, 'error': 'theme.css is empty or too large'})
+                    return
+                try:
+                    meta = json.loads(files['theme.json'].decode('utf-8'))
+                except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                    self.send_json_response(400, {'success': False, 'error': f'invalid theme.json: {e}'})
+                    return
+                err = validate_theme_meta(meta)
+                if err:
+                    self.send_json_response(400, {'success': False, 'error': err})
+                    return
+                theme_id = hint_id or meta['id']
+                # 备份包布局下以 theme.json 的 id 为准（目录名仅作提示）
+                if not is_valid_theme_id(theme_id):
+                    self.send_json_response(400, {'success': False, 'error': f'invalid theme id: {theme_id}'})
+                    return
+                try:
+                    install_theme_files(theme_id, files)
+                except Exception as e:
+                    self.send_json_response(500, {'success': False, 'error': f'failed to install theme: {e}'})
+                    return
+                imported.append(theme_id)
+                write_log(f"[themes] 导入主题包: {theme_id} ({len(files['theme.css'])} bytes css)")
+
+            self.send_json_response(200, {'success': True, 'data': {'imported': imported}})
+        except (ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
+        except Exception as e:
+            write_log(f"[themes] POST /api/themes/upload 异常: {e}")
+            self.send_json_response(500, {'success': False, 'error': str(e)})
+
+    def _send_zip_response(self, buf, filename):
+        content = buf.getvalue()
+        self.safe_send_response(200)
+        self.safe_send_header('Content-Type', 'application/zip')
+        self.safe_send_header('Access-Control-Allow-Origin', '*')
+        self.safe_send_header('Content-Length', len(content))
+        self.safe_send_header('Content-Disposition', f'attachment; filename="{filename}"')
+        self.safe_send_header('Cache-Control', 'no-cache')
+        self.safe_end_headers()
+        self.safe_write(content)
+
+    def handle_download_theme(self, theme_id):
+        try:
+            if not is_valid_theme_id(theme_id) or not os.path.isdir(theme_dir(theme_id)):
+                self.send_json_response(404, {'success': False, 'error': f'theme not found: {theme_id}'})
+                return
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for root, _, files in os.walk(theme_dir(theme_id)):
+                    for fname in sorted(files):
+                        fpath = os.path.join(root, fname)
+                        arcname = fname  # 单主题包：文件置于 zip 根目录
+                        zf.write(fpath, arcname)
+            meta = read_theme_meta(theme_id) or {}
+            version = meta.get('version', '')
+            filename = f"{theme_id}{('-' + str(version)) if version else ''}.zip"
+            write_log(f"[themes] 下载主题包: {theme_id}")
+            self._send_zip_response(buf, filename)
+        except (ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
+        except Exception as e:
+            write_log(f"[themes] GET /api/themes/{theme_id}/download 异常: {e}")
+            self.send_json_response(500, {'success': False, 'error': str(e)})
+
+    def handle_backup_themes(self):
+        try:
+            if not os.path.isdir(THEMES_DIR):
+                self.send_json_response(200, {'success': False, 'error': 'no themes installed'})
+                return
+            buf = io.BytesIO()
+            count = 0
+            with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for entry in sorted(os.listdir(THEMES_DIR)):
+                    tdir = theme_dir(entry)
+                    if not is_valid_theme_id(entry) or not os.path.isdir(tdir):
+                        continue
+                    for root, _, files in os.walk(tdir):
+                        for fname in sorted(files):
+                            fpath = os.path.join(root, fname)
+                            arcname = f"{entry}/{os.path.relpath(fpath, tdir).replace(os.sep, '/')}"
+                            zf.write(fpath, arcname)
+                    count += 1
+            if count == 0:
+                self.send_json_response(200, {'success': False, 'error': 'no themes installed'})
+                return
+            filename = f"LastDisciple-themes-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+            write_log(f"[themes] 备份主题包: {count} 个")
+            self._send_zip_response(buf, filename)
+        except (ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
+        except Exception as e:
+            write_log(f"[themes] GET /api/themes/backup 异常: {e}")
+            self.send_json_response(500, {'success': False, 'error': str(e)})
+
     # --- API: 基础配置 ---
 
     def handle_get_config(self):
@@ -1203,9 +1711,15 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
                     'wanHosts': config.wan_hosts,
                     'wanPingEnabled': config.wan_ping_enabled,
                     'defaultGateway': detect_default_gateway(),
-                    'debounceTime': config.debounce_time,
-                    'debug': config.debug,
-                    'probingMode': config.probing_mode
+                    'probingMode': config.probing_mode,
+                    'autoShutdownEnabled': config.auto_shutdown_enabled,
+                    'autoShutdownTarget': config.auto_shutdown_target,
+                    'autoShutdownFailureThreshold': config.auto_shutdown_failure_threshold,
+                    'autoShutdownRecoveryThreshold': config.auto_shutdown_recovery_threshold,
+                    'autoShutdownPowerOff': config.auto_shutdown_power_off,
+                    'shutdownTimeoutSeconds': config.shutdown_timeout_seconds,
+                    'shutdownTimeoutBufferRatio': config.shutdown_timeout_buffer_ratio,
+                    'themePackage': config.theme_package
                 }
             }).encode('utf-8'))
         except (ConnectionAbortedError, BrokenPipeError, OSError):
@@ -1214,15 +1728,22 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
     def handle_post_config(self, post_data):
         try:
             data = json.loads(post_data)
-            config = Config()
-            config.interval = data.get('interval', 10)
-            config.gateway = data.get('gateway', "192.168.1.99")
-            config.lan_gateway = data.get('lanGateway', data.get('lan_gateway', ''))
-            config.wan_host = data.get('wanHost', data.get('wan_host', ''))
-            config.wan_ping_enabled = data.get('wanPingEnabled', data.get('wan_ping_enabled', False))
-            config.debounce_time = data.get('debounceTime', 10)
-            config.debug = data.get('debug', True)
-            config.probing_mode = data.get('probingMode', 'fixed')
+            # 先加载现有配置：请求体未携带的字段（如 themePackage）保持原值不被重置
+            config = Config().load()
+            config.interval = data.get('interval', config.interval)
+            config.gateway = data.get('gateway', config.gateway)
+            config.lan_gateway = data.get('lanGateway', data.get('lan_gateway', config.lan_gateway))
+            config.wan_host = data.get('wanHost', data.get('wan_host', config.wan_host))
+            config.wan_ping_enabled = data.get('wanPingEnabled', data.get('wan_ping_enabled', config.wan_ping_enabled))
+            config.probing_mode = data.get('probingMode', config.probing_mode)
+            config.auto_shutdown_enabled = data.get('autoShutdownEnabled', config.auto_shutdown_enabled)
+            config.auto_shutdown_target = data.get('autoShutdownTarget', config.auto_shutdown_target)
+            config.auto_shutdown_failure_threshold = data.get('autoShutdownFailureThreshold', config.auto_shutdown_failure_threshold)
+            config.auto_shutdown_recovery_threshold = data.get('autoShutdownRecoveryThreshold', config.auto_shutdown_recovery_threshold)
+            config.auto_shutdown_power_off = bool(data.get('autoShutdownPowerOff', config.auto_shutdown_power_off))
+            config.shutdown_timeout_seconds = int(data.get('shutdownTimeoutSeconds', config.shutdown_timeout_seconds) or 0)
+            config.shutdown_timeout_buffer_ratio = float(data.get('shutdownTimeoutBufferRatio', config.shutdown_timeout_buffer_ratio) or 0)
+            config.theme_package = data.get('themePackage', config.theme_package)
 
             # 外网轮询地址池：优先 wanHosts 数组；缺失时回退到单个 wanHost
             raw_hosts = data.get('wanHosts', data.get('wan_hosts', []))
@@ -1254,10 +1775,31 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
             if config.gateway != config.lan_gateway:
                 config.gateway = config.lan_gateway or config.gateway
 
-            if config.debounce_time <= 0:
+            if config.auto_shutdown_target not in ['lan', 'wan', 'any']:
                 self.send_json_response(400, {
                     'success': False,
-                    'error': 'DebounceTime must be greater than 0'
+                    'error': 'AutoShutdownTarget must be one of: lan, wan, any'
+                })
+                return
+
+            if config.auto_shutdown_failure_threshold < 1 or config.auto_shutdown_recovery_threshold < 1:
+                self.send_json_response(400, {
+                    'success': False,
+                    'error': 'AutoShutdown thresholds must be greater than 0'
+                })
+                return
+
+            if config.shutdown_timeout_seconds < 0:
+                self.send_json_response(400, {
+                    'success': False,
+                    'error': 'shutdownTimeoutSeconds must be >= 0 (0 = no limit)'
+                })
+                return
+
+            if not (0 <= config.shutdown_timeout_buffer_ratio <= 1):
+                self.send_json_response(400, {
+                    'success': False,
+                    'error': 'shutdownTimeoutBufferRatio must be between 0 and 1'
                 })
                 return
 
@@ -1285,8 +1827,13 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
                         'wanHost': config.wan_host,
                         'wanHosts': config.wan_hosts,
                         'wanPingEnabled': config.wan_ping_enabled,
-                        'debounceTime': config.debounce_time,
-                        'debug': config.debug,
+                        'autoShutdownEnabled': config.auto_shutdown_enabled,
+                        'autoShutdownTarget': config.auto_shutdown_target,
+                        'autoShutdownFailureThreshold': config.auto_shutdown_failure_threshold,
+                        'autoShutdownRecoveryThreshold': config.auto_shutdown_recovery_threshold,
+                        'autoShutdownPowerOff': config.auto_shutdown_power_off,
+                        'shutdownTimeoutSeconds': config.shutdown_timeout_seconds,
+                        'shutdownTimeoutBufferRatio': config.shutdown_timeout_buffer_ratio,
                         'probingMode': config.probing_mode
                     }
                 })
@@ -1308,8 +1855,6 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
         self.send_json_response(200, {
             'success': True,
             'data': {
-                'stopApps': config.stop_apps,
-                'dockerContainers': config.docker_containers,
                 'shutdownOrder': config.shutdown_order,
                 'startupOrder': config.startup_order
             }
@@ -1319,8 +1864,6 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
         try:
             data = json.loads(post_data)
             config = AdvancedConfig()
-            config.stop_apps = data.get('stopApps', [])
-            config.docker_containers = data.get('dockerContainers', [])
             config.shutdown_order = data.get('shutdownOrder', [])
             config.startup_order = data.get('startupOrder', [])
 
@@ -1328,60 +1871,8 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
                 self.send_json_response(200, {
                     'success': True,
                     'data': {
-                        'stopApps': config.stop_apps,
-                        'dockerContainers': config.docker_containers,
                         'shutdownOrder': config.shutdown_order,
                         'startupOrder': config.startup_order
-                    }
-                })
-            else:
-                self.send_json_response(500, {
-                    'success': False,
-                    'error': 'Failed to save config'
-                })
-        except Exception as e:
-            self.send_json_response(400, {
-                'success': False,
-                'error': 'Invalid request data'
-            })
-
-    # --- API: IoT 配置 ---
-
-    def handle_get_iot_config(self):
-        config = IotConfig().load()
-        self.send_json_response(200, {
-            'success': True,
-            'data': {
-                'platform': config.platform,
-                'deviceName': config.device_name,
-                'productKey': config.product_key,
-                'deviceSecret': config.device_secret,
-                'region': config.region,
-                'enabled': config.enabled
-            }
-        })
-
-    def handle_post_iot_config(self, post_data):
-        try:
-            data = json.loads(post_data)
-            config = IotConfig()
-            config.platform = data.get('platform', "aliyun")
-            config.device_name = data.get('deviceName', "")
-            config.product_key = data.get('productKey', "")
-            config.device_secret = data.get('deviceSecret', "")
-            config.region = data.get('region', "cn-shanghai")
-            config.enabled = data.get('enabled', False)
-
-            if config.save():
-                self.send_json_response(200, {
-                    'success': True,
-                    'data': {
-                        'platform': config.platform,
-                        'deviceName': config.device_name,
-                        'productKey': config.product_key,
-                        'deviceSecret': config.device_secret,
-                        'region': config.region,
-                        'enabled': config.enabled
                     }
                 })
             else:
@@ -1518,28 +2009,12 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
         """按 shutdownOrder 顺序停止全部配置项，聚合每项结果。"""
         cfg = AdvancedConfig().load()
         order = cfg.shutdown_order or []
-        results = []
         if not PRIV_HELPER_SOCKET:
             write_log("[api] POST /api/execute-shutdown → 503 (privilege helper not configured)")
             self.send_json_response(503, {'success': False, 'error': 'root privilege helper unavailable (not on fnOS)'})
             return
         write_log(f"[api] POST /api/execute-shutdown items={len(order)}")
-        try:
-            with PrivilegeClient() as priv:
-                for item in order:
-                    name = item.get('name', '')
-                    t = item.get('type', 'app')
-                    if not name:
-                        continue
-                    try:
-                        r = priv.execute('stop', {'type': t, 'name': name})
-                        results.append({'name': name, 'type': t, 'success': True, 'message': r.get('message', '')})
-                    except PrivilegeOperationError as e:
-                        results.append({'name': name, 'type': t, 'success': False, 'error': str(e)})
-        except PrivilegeError as e:
-            write_log(f"[api] POST /api/execute-shutdown → 503 privilege_error: {e}")
-            self.send_json_response(503, {'success': False, 'error': f'root privilege helper unavailable: {e}'})
-            return
+        results = execute_shutdown_sequence()
         ok_count = sum(1 for r in results if r.get('success'))
         write_log(f"[api] POST /api/execute-shutdown → 200 total={len(results)} ok={ok_count} failed={len(results) - ok_count}")
         self.send_json_response(200, {'success': True, 'data': {'results': results}})
@@ -1548,68 +2023,157 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
 
     def handle_execute_startup(self, post_data):
         """按 startupOrder 顺序启动全部配置项，聚合每项结果。"""
-        cfg = AdvancedConfig().load()
-        order = cfg.startup_order or []
-        results = []
         if not PRIV_HELPER_SOCKET:
             write_log("[api] POST /api/execute-startup → 503 (privilege helper not configured)")
             self.send_json_response(503, {'success': False, 'error': 'root privilege helper unavailable (not on fnOS)'})
             return
-        write_log(f"[api] POST /api/execute-startup items={len(order)}")
-        try:
-            with PrivilegeClient() as priv:
-                for item in order:
-                    name = item.get('name', '')
-                    t = item.get('type', 'app')
-                    if not name:
-                        continue
-                    try:
-                        r = priv.execute('start', {'type': t, 'name': name})
-                        results.append({'name': name, 'type': t, 'success': True, 'message': r.get('message', '')})
-                    except PrivilegeOperationError as e:
-                        results.append({'name': name, 'type': t, 'success': False, 'error': str(e)})
-        except PrivilegeError as e:
-            write_log(f"[api] POST /api/execute-startup → 503 privilege_error: {e}")
-            self.send_json_response(503, {'success': False, 'error': f'root privilege helper unavailable: {e}'})
-            return
+        results = execute_startup_sequence()
         ok_count = sum(1 for r in results if r.get('success'))
         write_log(f"[api] POST /api/execute-startup → 200 total={len(results)} ok={ok_count} failed={len(results) - ok_count}")
         self.send_json_response(200, {'success': True, 'data': {'results': results}})
 
-    # --- API: 通知配置 ---
-
-    def handle_get_notification_config(self):
-        config = NotificationConfig().load()
-        self.send_json_response(200, {
-            'success': True,
-            'data': {
-                'channels': config.channels
-            }
-        })
-
-    def handle_post_notification_config(self, post_data):
+    def handle_get_stop_stats(self):
+        """返回当前 shutdownOrder 各项的停止耗时统计与建议总超时。"""
         try:
-            data = json.loads(post_data)
-            config = NotificationConfig()
-            config.channels = data.get('channels', [])
+            cfg = AdvancedConfig().load()
+        except Exception:
+            cfg = None
+        order = (cfg.shutdown_order or []) if cfg else []
+        ratio = 0.10
+        try:
+            ratio = float(Config().load().shutdown_timeout_buffer_ratio)
+        except Exception:
+            pass
+        stats = _load_stop_stats()
+        items = []
+        total_avg = 0.0
+        for it in (order or []):
+            name, t = it.get('name', ''), it.get('type', 'app')
+            if not name:
+                continue
+            entry = stats.get(f"{t}:{name}")
+            row = {'name': name, 'type': t, 'count': 0, 'avg': None, 'last': None}
+            if entry:
+                row.update({'count': entry.get('count', 0), 'avg': entry.get('avg'),
+                            'last': entry.get('last')})
+                total_avg += float(entry.get('avg', 0.0))
+            items.append(row)
+        suggested = math.ceil(total_avg * (1.0 + ratio)) if items and total_avg > 0 else None
+        self.send_json_response(200, {'success': True, 'data': {
+            'items': items,
+            'bufferRatio': ratio,
+            'suggestedTimeoutSeconds': suggested
+        }})
 
-            if config.save():
-                self.send_json_response(200, {
-                    'success': True,
-                    'data': {
-                        'channels': config.channels
-                    }
-                })
-            else:
-                self.send_json_response(500, {
-                    'success': False,
-                    'error': 'Failed to save config'
-                })
-        except Exception as e:
-            self.send_json_response(400, {
-                'success': False,
-                'error': 'Invalid request data'
-            })
+    def handle_test_stop_item(self, post_data):
+        """实测单个配置项停止耗时：停止（计时）→ 记录统计 → 立即启动还原。
+
+        供前端逐项驱动测试使用，每完成一项即可刷新进度展示。
+        """
+        if not PRIV_HELPER_SOCKET:
+            self.send_json_response(503, {'success': False,
+                                          'error': 'root privilege helper unavailable (not on fnOS)'})
+            return
+        try:
+            data = json.loads(post_data) if post_data else {}
+        except Exception:
+            self.send_json_response(400, {'success': False, 'error': 'invalid JSON body'})
+            return
+        name = str(data.get('name') or '').strip()
+        item_type = str(data.get('type') or 'app').strip()
+        if not name:
+            self.send_json_response(400, {'success': False, 'error': 'name is required'})
+            return
+        if item_type not in ('app', 'docker'):
+            self.send_json_response(400, {'success': False, 'error': 'type must be app or docker'})
+            return
+        row = {'name': name, 'type': item_type, 'duration': None, 'restored': None, 'error': None}
+        write_log(f"[test] item stop {item_type}:{name} begin")
+        try:
+            with PrivilegeClient() as priv:
+                t0 = time.monotonic()
+                try:
+                    priv.execute('stop', {'type': item_type, 'name': name})
+                    duration = time.monotonic() - t0
+                    record_stop_time(name, item_type, duration)
+                    row['duration'] = round(duration, 2)
+                    write_log(f"[test] item stop {item_type}:{name} in {duration:.2f}s")
+                except PrivilegeOperationError as e:
+                    row['error'] = str(e)
+                    write_log(f"[test] item stop {item_type}:{name} failed: {e}")
+                if row['duration'] is not None:
+                    try:
+                        priv.execute('start', {'type': item_type, 'name': name})
+                        row['restored'] = True
+                    except PrivilegeOperationError as e:
+                        row['restored'] = False
+                        row['restoreError'] = str(e)
+        except PrivilegeError as e:
+            self.send_json_response(503, {'success': False, 'error': f'root privilege helper unavailable: {e}'})
+            return
+        write_log(f"[test] item {item_type}:{name} done dur={row['duration']} restored={row['restored']}")
+        self.send_json_response(200, {'success': True, 'data': row})
+
+    def handle_test_shutdown_timing(self, post_data):
+        """逐项实测停止耗时：停止（计时）→ 立即启动回原状态。
+
+        返回逐项耗时、建议总超时（Σ耗时 × (1 + 富裕比率)，精确到秒）。
+        """
+        if not PRIV_HELPER_SOCKET:
+            self.send_json_response(503, {'success': False,
+                                          'error': 'root privilege helper unavailable (not on fnOS)'})
+            return
+        try:
+            cfg = AdvancedConfig().load()
+        except Exception:
+            cfg = None
+        order = (cfg.shutdown_order or []) if cfg else []
+        ratio = 0.10
+        try:
+            ratio = float(Config().load().shutdown_timeout_buffer_ratio)
+        except Exception:
+            pass
+        results = []
+        total = 0.0
+        write_log(f"[api] POST /api/test-shutdown-timing → items={len(order)} ratio={ratio}")
+        try:
+            with PrivilegeClient() as priv:
+                for item in order:
+                    name, t = item.get('name', ''), item.get('type', 'app')
+                    if not name:
+                        continue
+                    row = {'name': name, 'type': t, 'duration': None, 'restored': None, 'error': None}
+                    t0 = time.monotonic()
+                    try:
+                        priv.execute('stop', {'type': t, 'name': name})
+                        duration = time.monotonic() - t0
+                        record_stop_time(name, t, duration)
+                        row['duration'] = round(duration, 2)
+                        total += duration
+                        write_log(f"[test] stop {t}:{name} in {duration:.2f}s")
+                    except PrivilegeOperationError as e:
+                        row['error'] = str(e)
+                        write_log(f"[test] stop {t}:{name} failed: {e}")
+                        results.append(row)
+                        continue
+                    try:
+                        priv.execute('start', {'type': t, 'name': name})
+                        row['restored'] = True
+                    except PrivilegeOperationError as e:
+                        row['restored'] = False
+                        row['restoreError'] = str(e)
+                    results.append(row)
+        except PrivilegeError as e:
+            self.send_json_response(503, {'success': False, 'error': f'root privilege helper unavailable: {e}'})
+            return
+        suggested = math.ceil(total * (1.0 + ratio)) if results and total > 0 else None
+        write_log(f"[api] POST /api/test-shutdown-timing → 200 total={total:.2f}s suggested={suggested}s")
+        self.send_json_response(200, {'success': True, 'data': {
+            'results': results,
+            'bufferRatio': ratio,
+            'totalSeconds': round(total, 2),
+            'suggestedTimeoutSeconds': suggested
+        }})
 
     # --- API: 状态查询 ---
 
@@ -1631,6 +2195,7 @@ class RequestHandler(GatewayMixin, BaseHTTPRequestHandler):
                 "error": last_status["error"],
                 "stats": ping_stats,
                 "probing": probing_state_info,
+                "autoShutdown": auto_shutdown.snapshot(),
                 "uptime": uptime_seconds
             }
         })
@@ -1706,6 +2271,31 @@ else:
 
 # ========== 启动入口 ==========
 
+def _boot_start_task():
+    """开机自动按 startupOrder 顺序启动应用（仅 fnOS 部署模式调用）。
+
+    延迟 30 秒等待系统服务（docker/appcenter/特权助手）就绪；
+    存在失败项时每 60 秒仅重试失败项，最多 3 轮。
+    """
+    try:
+        time.sleep(30)
+        failed = None
+        for attempt in (1, 2, 3):
+            results = execute_startup_sequence(only_names=failed)
+            if not results:
+                return
+            failed_names = {r['name'] for r in results if not r.get('success')}
+            ok = len(results) - len(failed_names)
+            write_log(f"[boot] startup_sequence attempt {attempt}: ok={ok} failed={len(failed_names)}")
+            if not failed_names:
+                return
+            failed = failed_names
+            if attempt < 3:
+                time.sleep(60)
+    except Exception as e:
+        write_log(f"[boot] startup_sequence error: {e}")
+
+
 def main():
     """服务启动入口，支持 fnOS 部署和本地开发两种模式。
 
@@ -1720,13 +2310,13 @@ def main():
         static_dir = sys.argv[1]
         tcp_port = int(sys.argv[2])
         socket_path = sys.argv[3]
-        gateway_prefix = sys.argv[4] if len(sys.argv) > 4 else "/app/FreePower"
+        gateway_prefix = sys.argv[4] if len(sys.argv) > 4 else "/app/LastDisciple"
     else:
         # 本地开发模式：仅 TCP，默认端口 8180
         tcp_port = int(os.environ.get('PORT', '8180'))
         socket_path = None
         static_dir = STATIC_DIR
-        gateway_prefix = "/app/FreePower"
+        gateway_prefix = "/app/LastDisciple"
 
     # 应用配置到 Handler 类属性
     RequestHandler.gateway_prefix = gateway_prefix
@@ -1739,6 +2329,11 @@ def main():
     # 启动外网 Ping 监控线程（独立线程，与内网并行探测）
     wan_ping_thread = WanPingThread()
     wan_ping_thread.start()
+
+    # 开机自动按 startupOrder 顺序启动应用（仅 fnOS 部署模式）
+    if socket_path:
+        threading.Thread(target=_boot_start_task, daemon=True).start()
+        print("[serve] boot startup task scheduled (30s delay)", flush=True)
 
     # 清理旧 socket 文件
     if socket_path and os.path.exists(socket_path):

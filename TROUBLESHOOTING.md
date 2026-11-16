@@ -1,8 +1,8 @@
-> **历史备注**：本文档最初编写于 2026 年 8 月，记录了 FreePower 应用从 v1.0.8 到 v1.0.12 历经 5 个版本的 502 故障排查全过程。后续如遇类似问题，请优先参考第二部分的方法论章节。
+> **历史备注**：本文档最初编写于 2026 年 8 月，记录了 LastDisciple 应用从 v1.0.8 到 v1.0.12 历经 5 个版本的 502 故障排查全过程。后续如遇类似问题，请优先参考第二部分的方法论章节。另：v1.0.80 起应用技术 ID 由 FreePower 全局更名为 LastDisciple，文中涉及应用名/路径/网关前缀的表述已统一按新名 LastDisciple 书写。
 
-# FreePower 飞牛OS应用 502故障排查记录与方法论
+# LastDisciple 飞牛OS应用 502故障排查记录与方法论
 
-> 本文档记录了 FreePower 应用在飞牛 fnOS 上"启动成功但页面 502"问题的完整排查过程，并基于此次经验总结了一套系统化的飞牛OS应用问题排查方法论。
+> 本文档记录了 LastDisciple 应用在飞牛 fnOS 上"启动成功但页面 502"问题的完整排查过程，并基于此次经验总结了一套系统化的飞牛OS应用问题排查方法论。
 
 ---
 
@@ -14,7 +14,7 @@
 
 | 维度 | 描述 |
 |------|------|
-| **应用名称** | FreePower |
+| **应用名称** | LastDisciple |
 | **运行环境** | 飞牛 fnOS（Debian 12 bookworm, 内核 6.18.18-trim） |
 | **问题现象** | 应用部署后进程启动成功、端口正常监听，但通过飞牛桌面进入应用显示 **502 Bad Gateway** |
 | **影响范围** | 无法通过飞牛桌面正常访问应用，直连 TCP 端口可正常访问 |
@@ -30,10 +30,10 @@
 
 #### 1.3 复现步骤
 
-1. 在飞牛OS应用管理中安装/升级 FreePower 应用
+1. 在飞牛OS应用管理中安装/升级 LastDisciple 应用
 2. 应用自动启动，查看 `info.log` 确认进程启动成功、端口监听正常
 3. 浏览器直接访问 `http://<host>:8848/` → **正常显示页面**
-4. 通过飞牛桌面点击 FreePower 应用图标 → **显示 502 Bad Gateway**
+4. 通过飞牛桌面点击 LastDisciple 应用图标 → **显示 502 Bad Gateway**
 
 ---
 
@@ -46,8 +46,8 @@
 **关键命令与输出**：
 
 ```bash
-# 检查进程 - 无 FreePower 进程
-ps aux | grep -i freepower | grep -v grep
+# 检查进程 - 无 LastDisciple 进程
+ps aux | grep -i lastdisciple | grep -v grep
 # (空)
 
 # 检查 systemd 服务
@@ -56,11 +56,11 @@ systemctl list-units | grep -i trim
 # trim_app_center.service active (running)  trim app center service
 
 # 检查应用日志
-cat /var/log/apps/FreePower.log
+cat /var/log/apps/LastDisciple.log
 # (空文件，0字节)
 
 # 查看历史日志
-zcat /var/log/apps/FreePower.log-20260716.gz
+zcat /var/log/apps/LastDisciple.log-20260716.gz
 # 显示安装成功，但从未有启动记录
 ```
 
@@ -73,7 +73,7 @@ zcat /var/log/apps/FreePower.log-20260716.gz
 **日志分析（1.0.8 版本）**：
 
 ```
-2026-08-07 22:53:49 - Starting FreePower 1.0.0
+2026-08-07 22:53:49 - Starting LastDisciple 1.0.0
 2026-08-07 22:53:50 - CMD = cd ".../www" && python -m http.server 8080
 bash: line 1: cd: .../www: No such file or directory
 ```
@@ -83,7 +83,7 @@ bash: line 1: cd: .../www: No such file or directory
 - `www` 目录不存在导致进程瞬间退出，但脚本认为启动成功
 - 日志缺乏关键环节记录（环境变量、venv 状态、端口监听验证）
 
-**修复**：增强 [cmd/main](file:///e:/workspace/fn/FreePower/cmd/main) 日志：
+**修复**：增强 [cmd/main](file:///e:/workspace/fn/LastDisciple/cmd/main) 日志：
 - 启动时 dump 关键环境变量
 - ensure_venv 各阶段状态记录
 - 配置端口读取全过程
@@ -102,12 +102,12 @@ bash: line 1: cd: .../www: No such file or directory
 
 **但页面仍 502。** 直连 `http://host:8848/` 正常。
 
-**关键发现**：读取 [app/ui/config](file:///e:/workspace/fn/FreePower/app/ui/config) 发现：
+**关键发现**：读取 [app/ui/config](file:///e:/workspace/fn/LastDisciple/app/ui/config) 发现：
 
 ```json
 {
     "gatewaySocket": "app.sock",
-    "gatewayPrefix": "/app/FreePower"
+    "gatewayPrefix": "/app/LastDisciple"
 }
 ```
 
@@ -125,14 +125,14 @@ fnOS 网关通过 Unix socket 连接应用，但应用只开了 TCP 端口，**�
 
 **操作**：
 1. 恢复 `gatewaySocket: "app.sock"`
-2. 创建 [serve.py](file:///e:/workspace/fn/FreePower/app/server/serve.py)，同时监听 TCP + Unix socket
+2. 创建 [serve.py](file:///e:/workspace/fn/LastDisciple/app/server/serve.py)，同时监听 TCP + Unix socket
 3. socket 路径设为 `${TRIM_PKGVAR}/app.sock`
 
 **日志（1.0.10 版本）**：
 
 ```
-- Socket path = /vol1/@appdata/FreePower/app.sock
-- SUCCESS: Unix socket created at /vol1/@appdata/FreePower/app.sock
+- Socket path = /vol1/@appdata/LastDisciple/app.sock
+- SUCCESS: Unix socket created at /vol1/@appdata/LastDisciple/app.sock
 ```
 
 **结果**：仍 502。socket 创建成功但网关找不到。
@@ -158,14 +158,14 @@ fnOS 网关通过 Unix socket 连接应用，但应用只开了 TCP 端口，**�
 **日志（1.0.11 版本）**：
 
 ```
-- Socket path = /vol1/@appcenter/FreePower/app.sock    ← 正确路径
-- SUCCESS: Unix socket created at /vol1/@appcenter/FreePower/app.sock
+- Socket path = /vol1/@appcenter/LastDisciple/app.sock    ← 正确路径
+- SUCCESS: Unix socket created at /vol1/@appcenter/LastDisciple/app.sock
 ```
 
 **但日志末尾出现异常堆栈**：
 
 ```
-FileNotFoundError: '/vol1/@appcenter/FreePower/ui/app/FreePower'
+FileNotFoundError: '/vol1/@appcenter/LastDisciple/ui/app/LastDisciple'
 ...
 IndexError: string index out of range
   File ".../http/server.py", line 624, in address_string
@@ -173,17 +173,17 @@ IndexError: string index out of range
 ```
 
 **两个新问题**：
-1. **路径前缀未处理**：网关转发 `/app/FreePower` 路径，`SimpleHTTPRequestHandler` 直接映射成文件路径 → 404
+1. **路径前缀未处理**：网关转发 `/app/LastDisciple` 路径，`SimpleHTTPRequestHandler` 直接映射成文件路径 → 404
 2. **Unix socket 的 IndexError**：Unix socket 的 `client_address` 是空字符串，`address_string()` 取首字符 → 崩溃，导致网关收不到有效响应 → 502
 
 #### 阶段八：最终修复 — 自定义 Handler
 
-**操作**：重写 [serve.py](file:///e:/workspace/fn/FreePower/app/server/serve.py)，新增 `GatewayHTTPRequestHandler`：
+**操作**：重写 [serve.py](file:///e:/workspace/fn/LastDisciple/app/server/serve.py)，新增 `GatewayHTTPRequestHandler`：
 
 1. **重写 `address_string()`**：处理空字符串 client_address，避免 IndexError
-2. **重写 `translate_path()`**：去掉 `/app/FreePower` 网关前缀再映射文件路径
+2. **重写 `translate_path()`**：去掉 `/app/LastDisciple` 网关前缀再映射文件路径
 
-同时修改 [cmd/main](file:///e:/workspace/fn/FreePower/cmd/main) 传入 `gateway_prefix` 参数。
+同时修改 [cmd/main](file:///e:/workspace/fn/LastDisciple/cmd/main) 传入 `gateway_prefix` 参数。
 
 **预期验证**（1.0.12 版本）：
 - 不再出现 IndexError 和 FileNotFoundError
@@ -213,11 +213,11 @@ IndexError: string index out of range
 
 | 文件 | 修改 | 目的 |
 |------|------|------|
-| [app/ui/config](file:///e:/workspace/fn/FreePower/app/ui/config) | 保留 `gatewaySocket: "app.sock"` | 符合 fnOS 统一网关要求 |
-| [app/server/serve.py](file:///e:/workspace/fn/FreePower/app/server/serve.py) | 新增 `GatewayHTTPRequestHandler` | 修复 Unix socket 兼容性 + 路径前缀 |
-| [cmd/main](file:///e:/workspace/fn/FreePower/cmd/main) | socket 路径用 `${TRIM_APPDEST}` | 符合文档要求，网关能找到 |
-| [cmd/main](file:///e:/workspace/fn/FreePower/cmd/main) | 传入 `gateway_prefix` 参数 | 动态适配网关前缀 |
-| [cmd/main](file:///e:/workspace/fn/FreePower/cmd/main) | 增强全链路日志 | 便于后续诊断 |
+| [app/ui/config](file:///e:/workspace/fn/LastDisciple/app/ui/config) | 保留 `gatewaySocket: "app.sock"` | 符合 fnOS 统一网关要求 |
+| [app/server/serve.py](file:///e:/workspace/fn/LastDisciple/app/server/serve.py) | 新增 `GatewayHTTPRequestHandler` | 修复 Unix socket 兼容性 + 路径前缀 |
+| [cmd/main](file:///e:/workspace/fn/LastDisciple/cmd/main) | socket 路径用 `${TRIM_APPDEST}` | 符合文档要求，网关能找到 |
+| [cmd/main](file:///e:/workspace/fn/LastDisciple/cmd/main) | 传入 `gateway_prefix` 参数 | 动态适配网关前缀 |
+| [cmd/main](file:///e:/workspace/fn/LastDisciple/cmd/main) | 增强全链路日志 | 便于后续诊断 |
 
 #### 4.2 核心代码逻辑
 
@@ -234,7 +234,7 @@ def address_string(self):
         return "unix"
 
 def translate_path(self, path):
-    # 去掉网关前缀 /app/FreePower 再映射文件路径
+    # 去掉网关前缀 /app/LastDisciple 再映射文件路径
     prefix = self.gateway_prefix
     if path.startswith(prefix):
         path = path[len(prefix):]
@@ -245,10 +245,10 @@ def translate_path(self, path):
 
 #### 4.3 验证标准
 
-- [x] info.log 显示 socket 创建在 `/vol1/@appcenter/FreePower/app.sock`
-- [x] 日志中出现 `[serve] gateway_prefix=/app/FreePower`
+- [x] info.log 显示 socket 创建在 `/vol1/@appcenter/LastDisciple/app.sock`
+- [x] 日志中出现 `[serve] gateway_prefix=/app/LastDisciple`
 - [x] 不再出现 `IndexError` 和 `FileNotFoundError`
-- [ ] 飞牛桌面访问 FreePower 不再 502（待 1.0.12 验证）
+- [ ] 飞牛桌面访问 LastDisciple 不再 502（待 1.0.12 验证）
 
 ---
 
@@ -260,7 +260,7 @@ def translate_path(self, path):
 2. **502 ≠ 应用未启动**：应用进程正常、端口监听正常，但网关仍 502，说明问题在网关与应用的连接通道，而非应用本身。
 3. **后台进程必须验证存活**：`bash -c "..." &` 的 `$?` 只反映是否成功启动后台任务，不反映后台任务是否成功运行。必须 sleep 后 check_process。
 4. **Python 标准库 http.server 不适合直接跑在 Unix socket 上**：client_address 为空字符串会导致 address_string() 崩溃，需自定义 Handler 适配。
-5. **网关转发会带前缀路径**：fnOS 网关把 `gatewayPrefix`（如 `/app/FreePower`）作为请求路径转发，应用必须处理这个前缀。
+5. **网关转发会带前缀路径**：fnOS 网关把 `gatewayPrefix`（如 `/app/LastDisciple`）作为请求路径转发，应用必须处理这个前缀。
 
 #### 5.2 注意事项
 
@@ -402,7 +402,7 @@ curl -s http://127.0.0.1:<port>/ <path>  # 直连测试
 
 #### 5.2 权限问题专项
 
-- 应用以独立用户运行（如 `FreePower:x:968`）
+- 应用以独立用户运行（如 `LastDisciple:x:968`）
 - 目录通过 ACL 控制访问（`getfacl` 查看）
 - socket 文件需 `chmod 666` 允许 nginx 访问
 - samgod 等普通管理员可能无 sudo 权限
@@ -455,14 +455,14 @@ Level 5: 飞牛官方技术支持
 
 | 文件 | 路径 | 作用 |
 |------|------|------|
-| 应用清单 | [manifest](file:///e:/workspace/fn/FreePower/manifest) | 应用元数据、端口、版本 |
-| 启动脚本 | [cmd/main](file:///e:/workspace/fn/FreePower/cmd/main) | 启动/停止/状态管理 |
-| 网关配置 | [app/ui/config](file:///e:/workspace/fn/FreePower/app/ui/config) | 桌面入口、网关路由 |
-| 服务脚本 | [app/server/server.py](file:///e:/workspace/fn/FreePower/app/server/server.py) | HTTP + Unix socket 服务 + 业务API + Ping监控 |
-| 特权助手 | [app/server/priv_helper.py](file:///e:/workspace/fn/FreePower/app/server/priv_helper.py) | root 特权操作守护进程 |
-| 应用配置 | [app/server/config.json](file:///e:/workspace/fn/FreePower/app/server/config.json) | 运行时配置（JSON 格式） |
-| 依赖清单 | [app/server/requirements.txt](file:///e:/workspace/fn/FreePower/app/server/requirements.txt) | Python 依赖 |
-| 运行日志 | [info.log](file:///e:/workspace/fn/FreePower/info.log) | 启动过程日志 |
+| 应用清单 | [manifest](file:///e:/workspace/fn/LastDisciple/manifest) | 应用元数据、端口、版本 |
+| 启动脚本 | [cmd/main](file:///e:/workspace/fn/LastDisciple/cmd/main) | 启动/停止/状态管理 |
+| 网关配置 | [app/ui/config](file:///e:/workspace/fn/LastDisciple/app/ui/config) | 桌面入口、网关路由 |
+| 服务脚本 | [app/server/server.py](file:///e:/workspace/fn/LastDisciple/app/server/server.py) | HTTP + Unix socket 服务 + 业务API + Ping监控 |
+| 特权助手 | [app/server/priv_helper.py](file:///e:/workspace/fn/LastDisciple/app/server/priv_helper.py) | root 特权操作守护进程 |
+| 应用配置 | [app/server/config.json](file:///e:/workspace/fn/LastDisciple/app/server/config.json) | 运行时配置（JSON 格式） |
+| 依赖清单 | [app/server/requirements.txt](file:///e:/workspace/fn/LastDisciple/app/server/requirements.txt) | Python 依赖 |
+| 运行日志 | [info.log](file:///e:/workspace/fn/LastDisciple/info.log) | 启动过程日志 |
 
 ## 参考资料
 

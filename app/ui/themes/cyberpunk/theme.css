@@ -1,0 +1,626 @@
+/* ============================================
+ * LastDisciple 主题包：赛博朋克 (Cyberpunk)
+ * 由 dev-tools/extract_theme.py 从默认样式提取生成
+ * 颜色与特效定义；日间模式通过 [data-theme="day"] 覆盖
+ * ============================================ */
+
+:root {
+    --neon-cyan: #00f5ff;
+    --neon-blue: #0066ff;
+    --neon-purple: #bf00ff;
+    --neon-pink: #ff006e;
+    --neon-green: #00ff88;
+    --neon-yellow: #ffff00;
+    --neon-orange: #ff8800;
+    --bg-primary: #0a0a0f;
+    --bg-secondary: #0d0d14;
+    --bg-card: rgba(13, 13, 20, 0.85);
+    --bg-glass: rgba(255, 255, 255, 0.03);
+    --border-color: rgba(0, 245, 255, 0.15);
+    --border-glow: rgba(0, 245, 255, 0.4);
+    --text-primary: #e0e0e0;
+    --text-secondary: #888899;
+    --text-muted: #555566;
+    --success-color: #00ff88;
+    --warning-color: #ffaa00;
+    --error-color: #ff3366;
+    --shadow-neon: 0 0 20px rgba(0, 245, 255, 0.3), 0 0 40px rgba(0, 245, 255, 0.1);
+    --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --shadow-glow: 0 0 30px rgba(0, 245, 255, 0.2);
+
+    /* 派生调色板（按基础样式首次出现顺序） */
+    --cp-1: #1e293b;
+    --cp-2: #0f172a;
+    --cp-3: rgba(0, 245, 255, 0.3);
+    --cp-4: rgba(0, 245, 255, 0.5);
+    --cp-5: rgba(0, 245, 255, 0.1);
+    --cp-6: rgba(0, 245, 255, 0.2);
+    --cp-7: rgba(0, 0, 0, 0.4);
+    --cp-8: rgba(0, 0, 0, 0.2);
+    --cp-9: rgba(255, 255, 255, 0.1);
+    --cp-10: rgba(0, 102, 255, 0.08);
+    --cp-11: rgba(191, 0, 255, 0.06);
+    --cp-12: rgba(0, 245, 255, 0.04);
+    --cp-13: rgba(0, 245, 255, 0.02);
+    --cp-14: rgba(0, 255, 136, 0.08);
+    --cp-15: rgba(0, 255, 136, 0.3);
+    --cp-16: rgba(0, 245, 255, 0.08);
+    --cp-17: rgba(255, 255, 255, 0.05);
+    --cp-18: rgba(0, 255, 136, 0.2);
+    --cp-19: rgba(255, 170, 0, 0.2);
+    --cp-20: rgba(255, 51, 102, 0.2);
+    --cp-21: rgba(255, 170, 0, 0.3);
+    --cp-22: rgba(255, 51, 102, 0.3);
+    --cp-23: rgba(0, 255, 136, 0.1);
+    --cp-24: rgba(255, 51, 102, 0.1);
+    --cp-25: rgba(255, 51, 102, 0.08);
+    --cp-26: rgba(255, 0, 110, 0.04);
+    --cp-27: rgba(0, 255, 136, 0.4);
+    --cp-28: rgba(255, 170, 0, 0.4);
+    --cp-29: rgba(255, 51, 102, 0.4);
+    --cp-30: rgba(0, 245, 255, 0.05);
+    --cp-31: rgba(255, 170, 0, 0.25);
+    --cp-32: rgba(0, 245, 255, 0.25);
+    --cp-33: rgba(0, 245, 255, 0.12);
+    --cp-34: rgba(0, 245, 255, 0.35);
+    --cp-35: rgba(0, 245, 255, 0.22);
+    --cp-36: rgba(10, 15, 25, 0.96);
+    --cp-37: rgba(0, 0, 0, 0.5);
+    --cp-38: rgba(0, 245, 255, 0.16);
+    --cp-39: rgba(255, 51, 102, 0.12);
+    --cp-40: #fff;
+    --cp-41: rgba(0, 245, 255, 0.06);
+    --cp-42: rgba(0, 245, 255, 0.18);
+    --cp-43: rgba(255, 255, 255, 0.2);
+    --cp-44: rgba(255, 60, 90, 0.18);
+    --cp-45: rgba(255, 60, 90, 0.06);
+    --cp-46: rgba(255, 60, 90, 0.4);
+    --cp-47: #ff6b81;
+    --cp-48: rgba(255, 60, 90, 0.3);
+    --cp-49: rgba(255, 60, 90, 0.12);
+    --cp-50: rgba(0, 230, 118, 0.18);
+    --cp-51: rgba(0, 230, 118, 0.06);
+    --cp-52: rgba(0, 230, 118, 0.4);
+    --cp-53: #00e676;
+    --cp-54: rgba(0, 230, 118, 0.3);
+    --cp-55: rgba(0, 230, 118, 0.12);
+    --cp-56: rgba(0, 0, 0, 0.25);
+    --cp-57: rgba(255, 255, 255, 0.08);
+    --cp-58: rgba(255, 255, 255, 0.06);
+    --cp-59: rgba(0, 255, 136, 0.12);
+    --cp-60: rgba(255, 165, 0, 0.12);
+    --cp-61: #ffae42;
+    --cp-62: rgba(255, 165, 0, 0.3);
+    --cp-63: rgba(0, 102, 255, 0.12);
+    --cp-64: rgba(102, 0, 255, 0.08);
+    --cp-65: rgba(102, 0, 255, 0.3);
+    --cp-66: #c39bff;
+    --cp-67: #a977ff;
+    --cp-68: rgba(102, 0, 255, 0.18);
+    --cp-69: rgba(102, 0, 255, 0.25);
+    --cp-70: rgba(10, 15, 25, 0.72);
+    --cp-71: #ff6b8e;
+    --cp-72: rgba(255, 51, 102, 0.25);
+    --cp-73: #ff8aad;
+    --cp-74: #001016;
+    --cp-75: rgba(10, 15, 25, 0.55);
+    --cp-76: rgba(0, 245, 255, 0.6);
+    --cp-77: rgba(0, 255, 136, 0.28);
+    --cp-78: rgba(0, 255, 136, 0.06);
+    --cp-79: rgba(0, 255, 136, 0.5);
+    --cp-80: rgba(0, 255, 136, 0.25);
+    --cp-81: rgba(255, 170, 0, 0.28);
+    --cp-82: rgba(255, 170, 0, 0.06);
+    --cp-83: rgba(255, 170, 0, 0.5);
+    --cp-84: rgba(255, 51, 102, 0.28);
+    --cp-85: rgba(255, 51, 102, 0.06);
+    --cp-86: rgba(255, 51, 102, 0.5);
+    --cp-87: rgba(0, 245, 255, 0.28);
+    --cp-88: rgba(0, 245, 255, 0.07);
+    --cp-89: rgba(0, 245, 255, 0.01);
+    --cp-90: rgba(0, 245, 255, 0.45);
+
+    /* 背景粒子色板（逗号分隔，供 JS 读取） */
+    --particle-colors-night: #00f5ff, #0066ff, #bf00ff, #00ff88;
+}
+
+[data-theme="day"] {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-card: rgba(255, 255, 255, 0.95);
+    --bg-glass: rgba(0, 102, 255, 0.05);
+    --border-color: rgba(0, 102, 255, 0.2);
+    --border-glow: rgba(0, 102, 255, 0.5);
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --error-color: #ef4444;
+    --shadow-neon: 0 0 20px rgba(0, 102, 255, 0.2), 0 0 40px rgba(0, 102, 255, 0.08);
+    --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    --shadow-glow: 0 0 30px rgba(0, 102, 255, 0.15);
+    --particle-colors-day: #0066ff, #3b82f6, #60a5fa, #93c5fd;
+}
+
+/* 日间/夜间模式专属规则（自基础样式迁出） */
+
+
+
+
+        [data-theme="day"] body::before {
+            background: 
+                radial-gradient(ellipse at 20% 20%, rgba(0, 102, 255, 0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(59, 130, 246, 0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(147, 197, 253, 0.03) 0%, transparent 70%);
+        }
+
+
+        [data-theme="day"] .particle {
+            background: var(--neon-blue);
+            box-shadow: 0 0 6px var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .grid-overlay {
+            background-image: 
+                linear-gradient(rgba(0, 102, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 102, 255, 0.03) 1px, transparent 1px);
+        }
+
+
+        [data-theme="day"] .scan-line {
+            background: linear-gradient(90deg, transparent, var(--neon-blue), transparent);
+        }
+
+
+        [data-theme="day"] .status-badge {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+
+        [data-theme="day"] .status-dot {
+            box-shadow: 0 0 10px var(--success-color);
+        }
+
+
+        [data-theme="day"] .card {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+
+        [data-theme="day"] .card:hover {
+            box-shadow: 0 8px 30px rgba(0, 102, 255, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+
+        [data-theme="day"] .card::before {
+            background: linear-gradient(90deg, transparent, var(--neon-blue), transparent);
+            opacity: 0.3;
+        }
+
+
+        [data-theme="day"] .stat-card {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+
+        [data-theme="day"] .stat-card:hover {
+            box-shadow: 0 8px 30px rgba(0, 102, 255, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+
+        [data-theme="day"] .status-banner.connected {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(0, 102, 255, 0.04));
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+
+        [data-theme="day"] .status-banner.disconnected {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(251, 146, 60, 0.04));
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+
+        [data-theme="day"] .chart-bar.excellent {
+            background: linear-gradient(180deg, var(--success-color), rgba(16, 185, 129, 0.3));
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
+
+
+        [data-theme="day"] .chart-bar.good {
+            background: linear-gradient(180deg, var(--neon-blue), rgba(0, 102, 255, 0.3));
+            box-shadow: 0 0 15px rgba(0, 102, 255, 0.3);
+        }
+
+
+        [data-theme="day"] .chart-bar.warning {
+            background: linear-gradient(180deg, var(--warning-color), rgba(245, 158, 11, 0.3));
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+        }
+
+
+        [data-theme="day"] .chart-bar.poor {
+            background: linear-gradient(180deg, var(--error-color), rgba(239, 68, 68, 0.3));
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+        }
+
+
+        [data-theme="day"] .form-input {
+            background: var(--bg-secondary);
+            border-color: rgba(0, 102, 255, 0.15);
+        }
+
+
+        [data-theme="night"] .form-select {
+            background: rgba(15, 15, 25, 0.95);
+            border-color: rgba(0, 245, 255, 0.25);
+            color: #ffffff;
+            font-weight: 500;
+            text-shadow: 0 0 1px rgba(255, 255, 255, 0.3);
+        }
+
+
+        [data-theme="night"] .form-select option {
+            background: #0f0f19;
+            color: #ffffff;
+            padding: 8px 12px;
+        }
+
+
+        [data-theme="night"] .form-select:hover {
+            background: rgba(18, 18, 30, 0.98);
+            border-color: rgba(0, 245, 255, 0.35);
+        }
+
+
+        [data-theme="night"] .form-select:focus {
+            background: rgba(20, 20, 35, 0.98);
+            border-color: var(--neon-cyan);
+            color: #ffffff;
+            box-shadow: 0 0 15px rgba(0, 245, 255, 0.25);
+        }
+
+
+        [data-theme="day"] .form-select {
+            background: var(--bg-secondary);
+            border-color: rgba(0, 102, 255, 0.15);
+        }
+
+
+        [data-theme="day"] .form-input:focus,
+        [data-theme="day"] .form-select:focus {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 20px rgba(0, 102, 255, 0.15);
+        }
+
+
+        [data-theme="day"] .radio-item.active {
+            border-color: var(--neon-blue);
+            background: rgba(0, 102, 255, 0.08);
+            box-shadow: 0 0 20px rgba(0, 102, 255, 0.12);
+        }
+
+
+        [data-theme="day"] .btn-primary {
+            background: linear-gradient(135deg, var(--neon-blue), #3b82f6);
+            color: #ffffff;
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3);
+        }
+
+
+        [data-theme="day"] .btn-primary:hover {
+            box-shadow: 0 6px 20px rgba(0, 102, 255, 0.4);
+        }
+
+
+        [data-theme="day"] .logs-container {
+            background: var(--bg-secondary);
+            border-color: rgba(0, 102, 255, 0.1);
+        }
+
+
+        [data-theme="day"] .logs-container::-webkit-scrollbar-thumb {
+            background: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .stat-card.primary .stat-value {
+            color: var(--neon-blue);
+            text-shadow: 0 0 15px rgba(0, 102, 255, 0.3);
+        }
+
+
+        [data-theme="day"] .stat-card.success .stat-value {
+            color: var(--success-color);
+            text-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
+
+
+        [data-theme="day"] .stat-card.warning .stat-value {
+            color: var(--warning-color);
+            text-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+        }
+
+
+        [data-theme="day"] .stat-card.danger .stat-value {
+            color: var(--error-color);
+            text-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+        }
+
+
+        [data-theme="day"] .trend-value.up {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+
+        [data-theme="day"] .trend-value.down {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+
+        [data-theme="day"] .theme-toggle {
+            background: linear-gradient(135deg, #93c5fd, #60a5fa);
+            border-color: rgba(0, 102, 255, 0.4);
+        }
+
+
+        [data-theme="day"] .theme-toggle:hover {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 20px rgba(0, 102, 255, 0.3);
+        }
+
+
+        [data-theme="day"] .theme-toggle-thumb {
+            left: 31px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+
+
+        [data-theme="day"] .theme-status-indicator {
+            background: rgba(0, 102, 255, 0.1);
+            border-color: rgba(0, 102, 255, 0.2);
+        }
+
+
+        [data-theme="day"] .theme-countdown {
+            color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .language-btn {
+            background: rgba(0, 102, 255, 0.1);
+            border-color: rgba(0, 102, 255, 0.3);
+        }
+
+
+        [data-theme="day"] .language-btn:hover {
+            background: rgba(0, 102, 255, 0.2);
+        }
+
+
+        [data-theme="day"] .language-option.active {
+            color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .theme-mode-btn.active {
+            background: linear-gradient(135deg, var(--neon-blue), #3b82f6);
+        }
+
+
+        [data-theme="day"] .dashboard-header::before {
+            background: linear-gradient(90deg, var(--neon-blue), #3b82f6, #60a5fa);
+        }
+
+
+        [data-theme="day"] .header-corner {
+            border-color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .card-corner {
+            border-color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .dashboard-title {
+            background: linear-gradient(135deg, var(--neon-blue), #3b82f6, #1e40af);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+
+        [data-theme="day"] .card-title {
+            color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .tab-btn {
+            color: var(--text-secondary);
+        }
+
+
+        [data-theme="day"] .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(0, 102, 255, 0.08);
+        }
+
+
+        [data-theme="day"] .tab-btn.active {
+            color: var(--neon-blue);
+            border-bottom-color: var(--neon-blue);
+            text-shadow: 0 1px 2px rgba(0, 102, 255, 0.15);
+        }
+
+
+        [data-theme="day"] .item-tag {
+            border-color: rgba(0, 102, 255, 0.25);
+        }
+
+
+        [data-theme="day"] .item-tag .remove-btn {
+            color: var(--text-secondary);
+        }
+
+
+        [data-theme="day"] .item-tag .remove-btn:hover {
+            color: var(--error-color);
+        }
+
+
+        [data-theme="day"] .order-relationship-hint {
+            background: rgba(0, 102, 255, 0.06);
+            border-color: rgba(0, 102, 255, 0.2);
+            color: var(--text-secondary);
+        }
+
+
+        [data-theme="day"] .order-list {
+            border-color: rgba(0, 102, 255, 0.1);
+        }
+
+
+        [data-theme="day"] .order-item .order-index {
+            background: rgba(0, 102, 255, 0.12);
+            color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .order-list-readonly .order-item .order-index {
+            background: rgba(0, 200, 83, 0.12);
+            color: #00a854;
+        }
+
+
+        [data-theme="day"] .order-item.dragging {
+            border-color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .order-item.drag-over-top,
+        [data-theme="day"] .order-item.drag-over-bottom {
+            border-color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .wan-dropdown-item-check {
+            color: var(--text-muted);
+        }
+
+
+        [data-theme="day"] .wan-dropdown-item.selected .wan-dropdown-item-check {
+            color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .wan-trigger:hover,
+        [data-theme="day"] .wan-trigger:focus {
+            border-color: rgba(0, 102, 255, 0.4);
+        }
+
+
+        [data-theme="day"] .wan-dropdown {
+            background: rgba(255, 255, 255, 0.97);
+            border-color: rgba(0, 102, 255, 0.2);
+            box-shadow: 0 12px 32px rgba(20, 40, 90, 0.25);
+        }
+
+
+        [data-theme="day"] .wan-dropdown-item:hover {
+            background: rgba(0, 102, 255, 0.08);
+        }
+
+
+        [data-theme="day"] .wan-dropdown-item.selected {
+            background: rgba(0, 102, 255, 0.12);
+            color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .btn-wan-ping-toggle {
+            border-color: rgba(0, 102, 255, 0.2);
+            background: rgba(0, 102, 255, 0.06);
+        }
+
+
+        [data-theme="day"] .btn-wan-ping-toggle:hover,
+        [data-theme="day"] .btn-wan-ping-toggle.active {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 12px rgba(0, 102, 255, 0.15);
+        }
+
+
+        [data-theme="day"] .select-wrap::after {
+            border-color: var(--neon-blue);
+        }
+
+
+        /* 日间主题适配 */
+        [data-theme="day"] .form-section {
+            border-bottom-color: rgba(0, 102, 255, 0.12);
+        }
+
+
+        [data-theme="day"] .form-section-icon {
+            background: rgba(0, 102, 255, 0.08);
+            border-color: rgba(0, 102, 255, 0.2);
+        }
+
+
+        [data-theme="day"] .form-section-title {
+            color: var(--neon-blue);
+        }
+
+
+        [data-theme="day"] .form-actions {
+            border-top-color: rgba(0, 102, 255, 0.12);
+        }
+
+
+        [data-theme="day"] .card-title > span:first-child {
+            background: rgba(0, 102, 255, 0.08);
+            border-color: rgba(0, 102, 255, 0.2);
+        }
+
+
+        [data-theme="day"] .form-input:hover {
+            border-color: rgba(0, 102, 255, 0.35);
+        }
+
+
+        [data-theme="day"] .form-input:focus {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 0 1px rgba(0, 102, 255, 0.3), 0 0 24px rgba(0, 102, 255, 0.2);
+        }
+
+
+        [data-theme="day"] .card-header {
+            background: linear-gradient(180deg, rgba(0, 102, 255, 0.07), rgba(0, 102, 255, 0.01));
+            border-bottom-color: rgba(0, 102, 255, 0.14);
+        }
+
+
+        [data-theme="day"] .card-title > span:first-child {
+            box-shadow: 0 0 14px rgba(0, 102, 255, 0.12);
+        }
+
+
+        [data-theme="day"] .form-section-head::before {
+            background: linear-gradient(180deg, #3b82f6, var(--neon-blue));
+        }
+
+
+        [data-theme="day"] .form-actions .btn:hover {
+            box-shadow: 0 0 30px rgba(0, 102, 255, 0.35);
+        }
+
+
+        [data-theme="day"] .radio-item.active {
+            box-shadow: 0 0 24px rgba(0, 102, 255, 0.14);
+        }

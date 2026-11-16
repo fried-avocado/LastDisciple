@@ -5,9 +5,6 @@ PID_FILE="${TRIM_PKGVAR}/app.pid"
 DATA_DIR="${TRIM_PKGVAR}"
 
 APP_SRC_DIR="${TRIM_APPDEST}/server"
-VENV_DIR="${TRIM_PKGVAR}/.venv"
-PIP_INDEX="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
-PIP_INDEX_BACKUP="https://pypi.org/simple"
 
 find_python() {
   for candidate in /usr/bin/python3 /usr/local/bin/python3 /usr/bin/python3.11 /usr/bin/python3.12 /usr/bin/python3.10; do
@@ -29,102 +26,8 @@ log_msg() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >>"${LOG_FILE}"
 }
 
-install_deps() {
-  local index_url="$1"
-  log_msg "Trying pip index: ${index_url}"
-
-  "${VENV_DIR}/bin/pip" install --upgrade pip -i "${index_url}" >>"${LOG_FILE}" 2>&1
-  if [ $? -ne 0 ]; then
-    log_msg "WARNING: Failed to upgrade pip with ${index_url}"
-    return 1
-  fi
-
-  "${VENV_DIR}/bin/pip" install -r "${APP_SRC_DIR}/requirements.txt" -i "${index_url}" >>"${LOG_FILE}" 2>&1
-  if [ $? -ne 0 ]; then
-    log_msg "WARNING: Failed to install dependencies with ${index_url}"
-    return 1
-  fi
-
-  return 0
-}
-
-migrate_old_venv() {
-  local old_venv="${APP_SRC_DIR}/.venv"
-  if [ -d "${old_venv}" ] && [ ! -d "${VENV_DIR}" ]; then
-    log_msg "Migrating venv from ${old_venv} to ${VENV_DIR}..."
-    cp -a "${old_venv}" "${VENV_DIR}" 2>>"${LOG_FILE}"
-    if [ $? -eq 0 ] && [ -f "${VENV_DIR}/bin/python" ]; then
-      log_msg "Old venv migrated successfully."
-    else
-      log_msg "WARNING: Failed to migrate old venv, will create new one."
-      rm -rf "${VENV_DIR}"
-    fi
-  fi
-}
-
-ensure_venv() {
-  migrate_old_venv
-
-  local needs_install=0
-
-  log_msg "ensure_venv: VENV_DIR=${VENV_DIR}, dir_exists=$([ -d "${VENV_DIR}" ] && echo yes || echo no), python_exists=$([ -f "${VENV_DIR}/bin/python" ] && echo yes || echo no), pip_exists=$([ -f "${VENV_DIR}/bin/pip" ] && echo yes || echo no)"
-  if [ ! -d "${VENV_DIR}" ] || [ ! -f "${VENV_DIR}/bin/python" ]; then
-    log_msg "Creating virtual environment in ${VENV_DIR} with ${PYTHON_BIN}..."
-    "${PYTHON_BIN}" -m venv "${VENV_DIR}" >>"${LOG_FILE}" 2>&1
-    if [ $? -ne 0 ]; then
-      log_msg "ERROR: Failed to create virtual environment with ${PYTHON_BIN}"
-      return 1
-    fi
-    needs_install=1
-  fi
-
-  if [ ! -f "${VENV_DIR}/bin/pip" ]; then
-    log_msg "pip not found in venv, bootstrapping..."
-    "${VENV_DIR}/bin/python" -m ensurepip --upgrade >>"${LOG_FILE}" 2>&1
-    if [ $? -ne 0 ]; then
-      log_msg "WARNING: ensurepip failed, reinstalling venv..."
-      rm -rf "${VENV_DIR}"
-      "${PYTHON_BIN}" -m venv "${VENV_DIR}" >>"${LOG_FILE}" 2>&1
-      if [ $? -ne 0 ]; then
-        log_msg "ERROR: Failed to recreate virtual environment"
-        return 1
-      fi
-    fi
-    needs_install=1
-  fi
-
-  if [ ${needs_install} -eq 0 ]; then
-    if "${VENV_DIR}/bin/python" -c "import uvicorn" 2>/dev/null; then
-      log_msg "uvicorn already installed, no install needed"
-    else
-      log_msg "uvicorn not installed, installing dependencies..."
-      needs_install=1
-    fi
-  fi
-
-  if [ ${needs_install} -eq 1 ]; then
-    log_msg "Installing dependencies..."
-
-    if install_deps "${PIP_INDEX}"; then
-      log_msg "Dependencies installed successfully from primary mirror."
-    elif install_deps "${PIP_INDEX_BACKUP}"; then
-      log_msg "Dependencies installed successfully from backup mirror."
-    else
-      log_msg "ERROR: Failed to install dependencies from all mirrors"
-      return 1
-    fi
-
-    if ! "${VENV_DIR}/bin/python" -c "import uvicorn" 2>/dev/null; then
-      log_msg "ERROR: uvicorn still not available after installation"
-      log_msg "Checking installed packages..."
-      "${VENV_DIR}/bin/pip" list >>"${LOG_FILE}" 2>&1
-      return 1
-    fi
-
-    log_msg "Dependencies verified successfully."
-  fi
-  return 0
-}
+# 应用为纯 Python 标准库实现，无第三方依赖：
+# 不再创建 venv / pip 安装，直接使用系统 Python 启动。
 
 start_process() {
   if status; then
@@ -133,7 +36,7 @@ start_process() {
   fi
   log_msg "No existing process, proceeding with start"
 
-  log_msg "Starting ${TRIM_APPNAME:-FreePower} ${TRIM_APPVER:-1.0.0}"
+  log_msg "Starting ${TRIM_APPNAME:-LastDisciple} ${TRIM_APPVER:-1.0.0}"
   log_msg "App directory: ${TRIM_APPDEST}"
   log_msg "Data directory: ${TRIM_PKGVAR}"
   log_msg "Config directory: ${TRIM_PKGETC:-N/A}"
@@ -142,30 +45,6 @@ start_process() {
   log_msg "VENV_DIR: ${VENV_DIR}"
   log_msg "APP_SRC_DIR: ${APP_SRC_DIR}"
   log_msg "Starting process ..."
-
-  ensure_venv
-  local venv_rc=$?
-  log_msg "ensure_venv returned: ${venv_rc}"
-  if [ ${venv_rc} -ne 0 ]; then
-    log_msg "ERROR: Failed to setup virtual environment or install dependencies"
-    return 1
-  fi
-
-  # run-as=root 时 venv 由 root 创建，须交给包用户执行（遵循飞牛 OS 权限规范）
-  if [ -n "${TRIM_USERNAME:-}" ] && [ -d "${VENV_DIR}" ]; then
-    PKG_GROUP="$(id -gn "${TRIM_USERNAME}" 2>/dev/null)"
-    if [ -n "${PKG_GROUP}" ]; then
-      chown -R "${TRIM_USERNAME}:${PKG_GROUP}" "${VENV_DIR}" 2>>"${LOG_FILE}"
-      log_msg "chown venv to ${TRIM_USERNAME}:${PKG_GROUP}"
-    fi
-  fi
-
-  VENV_PYTHON="${VENV_DIR}/bin/python"
-  if [ ! -x "${VENV_PYTHON}" ]; then
-    log_msg "ERROR: VENV_PYTHON not found or not executable: ${VENV_PYTHON}"
-    return 1
-  fi
-  log_msg "VENV_PYTHON: ${VENV_PYTHON}"
 
   # 端口号仅从 manifest 的 service_port（通过 TRIM_SERVICE_PORT 环境变量）获取
   # 应用配置统一在 config.json 中管理，不再使用 YAML 配置文件
@@ -188,8 +67,8 @@ start_process() {
   # 清理旧 socket 文件
   rm -f "${socket_path}"
 
-  local gateway_prefix="/app/${TRIM_APPNAME:-FreePower}"
-  CMD="\"${VENV_PYTHON}\" \"${serve_script}\" \"${ui_dir}\" ${LISTEN_PORT} \"${socket_path}\" \"${gateway_prefix}\""
+  local gateway_prefix="/app/${TRIM_APPNAME:-LastDisciple}"
+  CMD="\"${PYTHON_BIN}\" \"${serve_script}\" \"${ui_dir}\" ${LISTEN_PORT} \"${socket_path}\" \"${gateway_prefix}\""
 
   log_msg "CMD = ${CMD}"
   log_msg "Socket path = ${socket_path}"
@@ -205,7 +84,7 @@ start_process() {
     # 独立目录 0750 root:pkggroup（组不可写，防符号链接替换）
     install -d -m 0750 -o root -g "${PKG_GROUP}" "${PRIV_SOCK_DIR}" 2>>"${LOG_FILE}"
     rm -f "${PRIV_SOCK}"
-    "${VENV_PYTHON}" "${priv_script}" "${PRIV_SOCK}" "${TRIM_USERNAME}" >>"${LOG_FILE}" 2>&1 &
+    "${PYTHON_BIN}" "${priv_script}" "${PRIV_SOCK}" "${TRIM_USERNAME}" >>"${LOG_FILE}" 2>&1 &
     PRIV_PID=$!
     printf "%s" "${PRIV_PID}" >"${PRIV_PID_FILE}"
     log_msg "priv_helper started, PID=${PRIV_PID}, sock=${PRIV_SOCK}"

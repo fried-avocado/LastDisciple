@@ -1,0 +1,294 @@
+/* ============================================
+ * LastDisciple 主题包：像素复古 (Pixel Retro)
+ * 复古 8-bit 配色 + 方角硬阴影 + 棋盘格纹理
+ * 日间模式通过 [data-theme="day"] 覆盖
+ * ============================================ */
+
+:root {
+    --neon-cyan: #5fcde4;
+    --neon-blue: #41a6f6;
+    --neon-purple: #d77bba;
+    --neon-pink: #ff004d;
+    --neon-green: #38b764;
+    --neon-yellow: #ffec27;
+    --neon-orange: #ffa300;
+    --bg-primary: #1a1c2c;
+    --bg-secondary: #16181f;
+    --bg-card: rgba(34, 35, 58, 0.85);
+    --bg-glass: rgba(255, 255, 255, 0.03);
+    --border-color: #3b4a6b;
+    --border-glow: #5fcde4;
+    --text-primary: #f4f4f4;
+    --text-secondary: #94a1b2;
+    --text-muted: #566c86;
+    --success-color: #38b764;
+    --warning-color: #ffa300;
+    --error-color: #ff004d;
+    --shadow-neon: 4px 4px 0 rgba(0, 0, 0, 0.85);
+    --shadow-card: 0 6px 0 rgba(0, 0, 0, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+    --shadow-glow: 0 0 0 3px rgba(95, 205, 228, 0.35);
+    --cp-1: #29366f;
+    --cp-2: #16181f;
+    --cp-3: rgba(95, 205, 228, 0.3);
+    --cp-4: rgba(95, 205, 228, 0.5);
+    --cp-5: rgba(95, 205, 228, 0.1);
+    --cp-6: rgba(95, 205, 228, 0.2);
+    --cp-7: rgba(0, 0, 0, 0.4);
+    --cp-8: rgba(0, 0, 0, 0.2);
+    --cp-9: rgba(255, 255, 255, 0.1);
+    --cp-10: rgba(65, 166, 246, 0.08);
+    --cp-11: rgba(215, 123, 186, 0.06);
+    --cp-12: rgba(95, 205, 228, 0.04);
+    --cp-13: rgba(95, 205, 228, 0.02);
+    --cp-14: rgba(56, 183, 100, 0.08);
+    --cp-15: rgba(56, 183, 100, 0.3);
+    --cp-16: rgba(95, 205, 228, 0.08);
+    --cp-17: rgba(255, 255, 255, 0.05);
+    --cp-18: rgba(56, 183, 100, 0.2);
+    --cp-19: rgba(255, 163, 0, 0.2);
+    --cp-20: rgba(255, 0, 77, 0.2);
+    --cp-21: rgba(255, 163, 0, 0.3);
+    --cp-22: rgba(255, 0, 77, 0.3);
+    --cp-23: rgba(56, 183, 100, 0.1);
+    --cp-24: rgba(255, 0, 77, 0.1);
+    --cp-25: rgba(255, 0, 77, 0.08);
+    --cp-26: rgba(255, 0, 77, 0.04);
+    --cp-27: rgba(56, 183, 100, 0.4);
+    --cp-28: rgba(255, 163, 0, 0.4);
+    --cp-29: rgba(255, 0, 77, 0.4);
+    --cp-30: rgba(95, 205, 228, 0.05);
+    --cp-31: rgba(255, 163, 0, 0.25);
+    --cp-32: rgba(95, 205, 228, 0.25);
+    --cp-33: rgba(95, 205, 228, 0.12);
+    --cp-34: rgba(95, 205, 228, 0.35);
+    --cp-35: rgba(95, 205, 228, 0.22);
+    --cp-36: rgba(26, 28, 44, 0.96);
+    --cp-37: rgba(0, 0, 0, 0.5);
+    --cp-38: rgba(95, 205, 228, 0.16);
+    --cp-39: rgba(255, 0, 77, 0.12);
+    --cp-40: #f4f4f4;
+    --cp-41: rgba(95, 205, 228, 0.06);
+    --cp-42: rgba(95, 205, 228, 0.18);
+    --cp-43: rgba(255, 255, 255, 0.2);
+    --cp-44: rgba(255, 0, 77, 0.18);
+    --cp-45: rgba(255, 0, 77, 0.06);
+    --cp-46: rgba(255, 0, 77, 0.4);
+    --cp-47: #ff7096;
+    --cp-48: rgba(255, 0, 77, 0.3);
+    --cp-49: rgba(255, 0, 77, 0.12);
+    --cp-50: rgba(56, 183, 100, 0.18);
+    --cp-51: rgba(56, 183, 100, 0.06);
+    --cp-52: rgba(56, 183, 100, 0.4);
+    --cp-53: #38b764;
+    --cp-54: rgba(56, 183, 100, 0.3);
+    --cp-55: rgba(56, 183, 100, 0.12);
+    --cp-56: rgba(0, 0, 0, 0.25);
+    --cp-57: rgba(255, 255, 255, 0.08);
+    --cp-58: rgba(255, 255, 255, 0.06);
+    --cp-59: rgba(56, 183, 100, 0.12);
+    --cp-60: rgba(255, 163, 0, 0.12);
+    --cp-61: #ffcd75;
+    --cp-62: rgba(255, 163, 0, 0.3);
+    --cp-63: rgba(65, 166, 246, 0.12);
+    --cp-64: rgba(181, 80, 136, 0.08);
+    --cp-65: rgba(181, 80, 136, 0.3);
+    --cp-66: #d77bba;
+    --cp-67: #b55088;
+    --cp-68: rgba(181, 80, 136, 0.18);
+    --cp-69: rgba(181, 80, 136, 0.25);
+    --cp-70: rgba(26, 28, 44, 0.72);
+    --cp-71: #ff6b8e;
+    --cp-72: rgba(255, 0, 77, 0.25);
+    --cp-73: #ff7096;
+    --cp-74: #16181f;
+    --cp-75: rgba(26, 28, 44, 0.55);
+    --cp-76: rgba(95, 205, 228, 0.6);
+    --cp-77: rgba(56, 183, 100, 0.28);
+    --cp-78: rgba(56, 183, 100, 0.06);
+    --cp-79: rgba(56, 183, 100, 0.5);
+    --cp-80: rgba(56, 183, 100, 0.25);
+    --cp-81: rgba(255, 163, 0, 0.28);
+    --cp-82: rgba(255, 163, 0, 0.06);
+    --cp-83: rgba(255, 163, 0, 0.5);
+    --cp-84: rgba(255, 0, 77, 0.28);
+    --cp-85: rgba(255, 0, 77, 0.06);
+    --cp-86: rgba(255, 0, 77, 0.5);
+    --cp-87: rgba(95, 205, 228, 0.28);
+    --cp-88: rgba(95, 205, 228, 0.07);
+    --cp-89: rgba(95, 205, 228, 0.01);
+    --cp-90: rgba(95, 205, 228, 0.45);
+    --particle-colors-night: #5fcde4, #41a6f6, #d77bba, #38b764;
+    /* 像素等宽字体覆盖 */
+    --font-tech: Consolas, 'Courier New', 'Lucida Console', monospace;
+    --font-main: 'Courier New', Consolas, monospace;
+
+}
+
+[data-theme="day"] {
+    --bg-primary: #e8e0d0;
+    --bg-secondary: #f4efe0;
+    --bg-card: rgba(255, 255, 255, 0.95);
+    --bg-glass: rgba(65, 166, 246, 0.05);
+    --border-color: #b8a890;
+    --border-glow: #41a6f6;
+    --text-primary: #29366f;
+    --text-secondary: #5a6988;
+    --text-muted: #566c86;
+    --success-color: #38b764;
+    --warning-color: #ffa300;
+    --error-color: #ff004d;
+    --shadow-neon: 4px 4px 0 rgba(42, 42, 58, 0.55);
+    --shadow-card: 0 6px 0 rgba(42, 42, 58, 0.28), inset 0 -3px 0 rgba(42, 42, 58, 0.12);
+    --shadow-glow: 0 0 0 3px rgba(65, 166, 246, 0.35);
+    --particle-colors-day: #41a6f6, #ff7096, #ffcd75, #38b764;
+}
+
+/* ============================================
+ * 像素复古附加规则（Pixel Retro Overlays）
+ * 方角、硬阴影、棋盘格纹理、等宽像素字体
+ * ============================================ */
+
+/* 像素核心：全元素方角 + 像素渲染 */
+* {
+    border-radius: 0 !important;
+}
+img, svg, video, canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+/* 背景棋盘格纹理（8px 像素格） */
+body {
+    background-image:
+        repeating-conic-gradient(rgba(255, 255, 255, 0.022) 0% 25%, transparent 0% 50%) !important;
+    background-size: 16px 16px !important;
+    letter-spacing: 0.3px;
+}
+body::before {
+    background:
+        repeating-linear-gradient(0deg, transparent 0 15px, rgba(255, 255, 255, 0.03) 15px 16px),
+        repeating-linear-gradient(90deg, transparent 0 15px, rgba(255, 255, 255, 0.03) 15px 16px) !important;
+}
+
+/* 像素网格覆盖层 */
+.grid-overlay {
+    background-image:
+        linear-gradient(rgba(95, 205, 228, 0.05) 2px, transparent 2px),
+        linear-gradient(90deg, rgba(95, 205, 228, 0.05) 2px, transparent 2px) !important;
+    background-size: 24px 24px !important;
+}
+
+/* 扫描线 -> CRT 像素扫描带 */
+.scan-line {
+    background: linear-gradient(90deg, transparent 0%, rgba(95, 205, 228, 0.55) 45%, rgba(244, 244, 244, 0.85) 50%, rgba(95, 205, 228, 0.55) 55%, transparent 100%) !important;
+}
+
+/* 卡片：实心底 + 3px 像素描边 + 硬投影 */
+.card {
+    background: var(--bg-card) !important;
+    border: 3px solid var(--border-color) !important;
+    box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    transition: transform 0.08s steps(2), box-shadow 0.08s steps(2) !important;
+}
+.card:hover {
+    transform: translate(-2px, -2px) !important;
+    box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.65) !important;
+}
+.card::before {
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-cyan)) !important;
+    opacity: 0.9;
+}
+
+/* 按钮：像素台阶式立体按键 */
+.btn,
+button {
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.85) !important;
+    border: 2px solid rgba(0, 0, 0, 0.65) !important;
+    text-shadow: none !important;
+    transition: transform 0.06s steps(2), box-shadow 0.06s steps(2) !important;
+    font-weight: 700 !important;
+}
+.btn:hover,
+button:hover {
+    transform: translate(-2px, -2px) !important;
+    box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.9) !important;
+}
+.btn:active,
+button:active {
+    transform: translate(3px, 3px) !important;
+    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85) !important;
+}
+.btn-primary {
+    background: var(--neon-green) !important;
+    border-color: rgba(0, 0, 0, 0.7) !important;
+    color: #16181f !important;
+}
+.btn-primary::before {
+    display: none !important;
+}
+.btn-danger {
+    background: var(--error-color) !important;
+    color: #fff !important;
+    border-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* 输入控件：方角 + 内嵌像素凹槽 */
+input, select, textarea, .form-field input, .form-field select {
+    box-shadow: inset 3px 3px 0 rgba(0, 0, 0, 0.45) !important;
+    border: 2px solid var(--border-color) !important;
+}
+input:focus, select:focus, textarea:focus {
+    border-color: var(--neon-cyan) !important;
+    box-shadow: inset 3px 3px 0 rgba(0, 0, 0, 0.45), 0 0 0 2px var(--neon-cyan) !important;
+    outline: none !important;
+}
+
+/* 状态点：方形像素灯 + 闪烁 steps 动画 */
+.status-dot {
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 顶部标题：像素横幅描边 */
+.header, header {
+    border-bottom: 4px solid var(--neon-cyan) !important;
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 标题文字：像素描边效果（text-shadow 硬偏移） */
+h1, h2, h3 {
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8) !important;
+}
+
+/* 滚动条像素化 */
+::-webkit-scrollbar {
+    width: 14px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--neon-cyan);
+    border: 3px solid var(--bg-secondary);
+    box-shadow: inset -3px -3px 0 rgba(0, 0, 0, 0.4);
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+/* 日间模式纹理调暗 */
+[data-theme="day"] body {
+    background-image:
+        repeating-conic-gradient(rgba(42, 42, 58, 0.05) 0% 25%, transparent 0% 50%) !important;
+    background-size: 16px 16px !important;
+}
+[data-theme="day"] body::before {
+    background:
+        repeating-linear-gradient(0deg, transparent 0 15px, rgba(42, 42, 58, 0.045) 15px 16px),
+        repeating-linear-gradient(90deg, transparent 0 15px, rgba(42, 42, 58, 0.045) 15px 16px) !important;
+}
+[data-theme="day"] .card {
+    box-shadow: 6px 6px 0 rgba(42, 42, 58, 0.3) !important;
+}
+[data-theme="day"] .btn,
+[data-theme="day"] button {
+    box-shadow: 4px 4px 0 rgba(42, 42, 58, 0.5) !important;
+}

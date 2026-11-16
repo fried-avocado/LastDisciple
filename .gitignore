@@ -3,4 +3,7 @@ __pycache__/
 *.log
 .trae/
 .DS_Store
+*.fpk
+app/server/config.json
+app/server/advanced_config.json
 

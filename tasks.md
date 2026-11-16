@@ -1,4 +1,4 @@
-# FreePower 任务列表
+# 关门弟子 (LastDisciple) 任务列表
 
 > 本文件用于控制任务执行。任务完成后移入 `completions.md` 并标记已完成；失败则移入 `failure.md`。
 

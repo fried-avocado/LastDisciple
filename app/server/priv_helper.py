@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FreePower 特权助手守护进程。
+"""LastDisciple 特权助手守护进程。
 
 以 root 运行，通过 Unix domain socket 为 Web 服务器（包用户）提供受限的特权操作：
   - get_apps : 通过 appcenter-cli list 读取飞牛 OS 已安装应用列表 + Docker 容器列表
@@ -42,7 +42,7 @@ PKGVAR = os.environ.get('TRIM_PKGVAR', '/tmp')
 LOG_FILE = os.path.join(PKGVAR, 'info.log')
 
 # op 白名单
-OP_WHITELIST = {'get_apps', 'start', 'stop'}
+OP_WHITELIST = {'get_apps', 'start', 'stop', 'poweroff'}
 
 # 名称校验：仅允许字母、数字、下划线、点、短横线，长度 1-128
 NAME_RE = re.compile(r'^[A-Za-z0-9_.\-]{1,128}$')
@@ -174,6 +174,8 @@ class PrivHandler:
                 data = self.get_apps(params)
             elif op in ('start', 'stop'):
                 data = self.control(params, op)
+            elif op == 'poweroff':
+                data = self.poweroff(params)
             else:
                 return {'success': False, 'error': 'op not implemented', 'id': req_id}
             elapsed = int((time.time() - started) * 1000)
@@ -222,14 +224,14 @@ class PrivHandler:
         """自动获取（picker）时应排除的应用名（规范化集合）。
 
         排除规则：
-          1. 当前应用自身（如 FreePower）
+          1. 当前应用自身（如 LastDisciple）
           2. 当前应用所依赖的应用（如 python 3.9 → python39）
 
         返回规范化名称集合，便于前端忽略大小写/空格差异匹配。
         """
         excluded = set()
         # 当前应用自身
-        appname = os.environ.get('TRIM_APPNAME', '') or 'FreePower'
+        appname = os.environ.get('TRIM_APPNAME', '') or 'LastDisciple'
         excluded.add(self._norm_name(appname))
         # 依赖应用
         excluded.update(self._load_own_dependency_names())
@@ -242,7 +244,7 @@ class PrivHandler:
         回退路径：appcenter-cli 不可用时，遍历 fnOS apps 目录读取 manifest。
 
         展示规则：
-          1. 展示全部应用（含当前应用 FreePower 自身）
+          1. 展示全部应用（含当前应用 LastDisciple 自身）
           2. 包含当前应用所依赖的所有应用（依赖应用由系统自动管理，需一并展示）
           3. 依赖匹配仅按应用名匹配（忽略版本号差异）
 
@@ -254,9 +256,9 @@ class PrivHandler:
             rc, stdout, stderr = _run_cmd([appcenter_bin, 'list'], timeout=15)
             if rc == 0:
                 parsed = self._parse_appcenter_list_output(stdout)
-                # 展示全部应用，不排除 FreePower 自身
+                # 展示全部应用，不排除 LastDisciple 自身
                 apps = parsed
-                # 识别当前应用（FreePower）的依赖应用，确保包含（按名称匹配，忽略版本）
+                # 识别当前应用（LastDisciple）的依赖应用，确保包含（按名称匹配，忽略版本）
                 dep_names = self._load_own_dependency_names()
                 matched_deps = [a['name'] for a in apps if self._norm_name(a['name']) in dep_names]
                 audit(f"GET_APPS caller={self.caller_label} method=appcenter-cli rc=0 "
@@ -355,7 +357,7 @@ class PrivHandler:
         """定位飞牛 OS 应用安装目录。
 
         查找顺序：
-          1. TRIM_APPDEST 的父目录（如 /vol1/@appcenter/FreePower → /vol1/@appcenter）
+          1. TRIM_APPDEST 的父目录（如 /vol1/@appcenter/LastDisciple → /vol1/@appcenter）
           2. TRIM_ROOT/apps（兼容旧路径）
           3. 常见候选路径（含 fnOS 实际路径 /vol*/@appcenter）
         返回目录路径或 None。
@@ -437,7 +439,7 @@ class PrivHandler:
         return re.sub(r'[\s._\-]+', '', (name or '').lower())
 
     def _load_own_dependency_names(self):
-        """从当前应用（FreePower）的 manifest 读取依赖应用名（规范化集合）。
+        """从当前应用（LastDisciple）的 manifest 读取依赖应用名（规范化集合）。
 
         依赖来源：manifest 的 install_dep_apps 字段，如
           install_dep_apps = python 3.9>3.9.10
@@ -445,17 +447,17 @@ class PrivHandler:
         「版本不完全匹配时，仅应用名称匹配即可认定为相关依赖应用」的规则。
         """
         dep_names = set()
-        # 定位 FreePower 自身的 manifest
+        # 定位 LastDisciple 自身的 manifest
         appdest = os.environ.get('TRIM_APPDEST', '')
         manifest_candidates = []
         if appdest:
             manifest_candidates.append(os.path.join(appdest, 'manifest'))
         apps_dir = self._find_apps_dir()
         if apps_dir:
-            manifest_candidates.append(os.path.join(apps_dir, 'FreePower', 'manifest'))
-            manifest_candidates.append(os.path.join(apps_dir, 'FreePower', 'var', 'manifest'))
+            manifest_candidates.append(os.path.join(apps_dir, 'LastDisciple', 'manifest'))
+            manifest_candidates.append(os.path.join(apps_dir, 'LastDisciple', 'var', 'manifest'))
         # fnOS 系统级 manifest 位置（应用安装时由 fnOS 写入）
-        manifest_candidates.append('/var/apps/FreePower/manifest')
+        manifest_candidates.append('/var/apps/LastDisciple/manifest')
 
         dep_lines = []
         for m_path in manifest_candidates:
@@ -494,7 +496,7 @@ class PrivHandler:
     def _read_apps_from_dir():
         """回退方法：遍历飞牛 OS apps 目录，解析每个应用的 manifest 获取显示名。
 
-        展示全部应用（含当前应用 FreePower 自身）。
+        展示全部应用（含当前应用 LastDisciple 自身）。
         """
         apps_dir = PrivHandler._find_apps_dir()
         if not apps_dir:
@@ -552,6 +554,32 @@ class PrivHandler:
             return self._control_app(name, action)
         else:
             return self._control_docker(name, action)
+
+    def poweroff(self, params):
+        """关闭系统（断线自动关机闭环专用，root 权限）。
+
+        systemctl poweroff -i 优先，回退原生 poweroff；命令成功返回即代表
+        关机流程已由 init 接管。
+        """
+        errors = []
+        candidates = [
+            (['systemctl', 'poweroff', '-i'], 'systemctl-poweroff', 15),
+            (['poweroff'], 'poweroff', 15),
+            (['/sbin/poweroff'], 'sbin-poweroff', 15),
+        ]
+        for cmd_args, label, timeout in candidates:
+            audit(f"POWEROFF caller={self.caller_label} cmd={label} args={cmd_args}")
+            rc, stdout, stderr = _run_cmd(cmd_args, timeout=timeout)
+            if rc == 0:
+                audit(f"POWEROFF caller={self.caller_label} cmd={label} rc=0 OK")
+                return {
+                    'action': 'poweroff', 'command': label, 'returncode': 0,
+                    'message': f'poweroff initiated via {label}'
+                }
+            err_detail = (stderr or '').strip()[:200] or f'exit {rc}'
+            errors.append(f'{label}: {err_detail}')
+            audit(f"POWEROFF caller={self.caller_label} cmd={label} rc={rc} stderr='{err_detail}' → try next")
+        raise RuntimeError(' | '.join(errors))
 
     def _control_app(self, name, action):
         """通过 appcenter-cli → systemctl 回退策略启停飞牛 OS 应用。

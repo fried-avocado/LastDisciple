@@ -1,7 +1,7 @@
-appname                    = FreePower
-version                    = 1.0.60
-display_name               = FreePower
-desc                       = """FreePower-description"""
+appname                    = LastDisciple
+version                    = 1.0.81
+display_name               = 关门弟子
+desc                       = """关门弟子——NAS 电源管家。实时监测内外网连通状态，断线时按自定义顺序自动关闭应用并安全关机；开机后延迟就绪、按序自动启动应用。支持关闭耗时实测与统计、总超时兜底、防误触发状态机，为无人值守场景提供完整的电源自动化闭环。"""
 platform                   = x86
 source                     = thirdparty
 maintainer                 = 牛油果
@@ -11,12 +11,130 @@ distributor_url            = https://club.fnnas.com/home.php?mod=space&uid=94706
 os_min_version             = 1.1.8
 ctl_stop                   = true
 desktop_uidir              = ui
-desktop_applaunchname      = FreePower.Application
+desktop_applaunchname      = LastDisciple.Application
 service_port               = 8848
 checkport                  = true
 install_dep_apps           = python 3.9>3.9.10
 disable_authorization_path = false
 changelog                  = """
+- 修复 /api/config 接口返回 200 空响应体（前端设置页加载配置
+  失败）：Config.__init__ 缺少 theme_package 默认值，该属性此前
+  仅在 load() 成功读取到 config.json 时才赋值，全新安装/从未保存
+  配置时访问即抛 AttributeError（响应头已发出、正文未写出）。
+  已本地复现验证修复（443 字节完整 JSON）
+- 应用技术 ID 全局更名 FreePower → LastDisciple：appname、桌面入口
+  标识（LastDisciple.Application）、网关前缀（/app/LastDisciple）、
+  共享目录声明、服务端硬编码路径与回退默认值、前端 localStorage
+  键（含历史键迁移，用户语言/主题偏好保留）、文档与工具脚本全部
+  联动更新；display_name「关门弟子」不变。注意：appname 变更后
+  与旧版 FreePower 属两个独立应用，已装 FreePower 无法覆盖升级，
+  需卸载后重新安装 LastDisciple（1.0.77 条目中"保持 appname 不变"
+  的保守决策自本版起废止）
+- 应用中心信息修复：desc 由资源键名改为实际应用介绍文本；
+  根目录 ICON.PNG/ICON_256.PNG（应用中心信息页读取的图标文件，
+  fnpack 直接打包进 fpk）替换为「关门弟子」新图标，此前一直是
+  初始默认图
+- 页面主标题改为「关门弟子」（英文 FreePower），副标题由
+  「实时连接与性能分析」改为「应用电源管理 · 断线自动关机」，
+  与项目核心定位一致；语言包缓存版本号递增至 14
+- 应用更名「关门弟子」（取"关门=关闭应用/关机"双关）：
+  manifest display_name、桌面入口 config title、浏览器标签页标题
+  同步更新；appname 保持 FreePower 不变（安装路径、网关前缀、
+  配置路径等技术标识依赖此 ID，更改会导致已装实例升级失败）
+- 全新应用图标：中式门扉微掩 + 门缝青色辉光 + 电源符号居中，
+  深色圆角底与赛博青配色，与界面视觉语言一致
+  （PIL 程序化绘制 512px 母版，重采样生成 256/64px，替换
+  ui/images/icon_256.png 与 icon_64.png）
+- 修复主题包卡片「启用/下载」按钮无视觉样式：.btn 为纯布局基类
+  （无边框/无底色，含 uppercase、min-height 48px 等全宽大按钮属性），
+  .theme-pkg-btn 此前仅定义尺寸 → 补全主题化视觉（深色底、青色
+  边框文字、hover 高亮），并覆盖 min-height/大小写转换
+- 「测试关闭耗时」按钮改用 btn-primary 标准结构（图标+文字 span），
+  与「保存设置」等主操作按钮风格一致；测试期间按钮文字显示
+  (N/M) 进度；排序区块（.order-section）恢复透明无框样式，与
+  设置页其他区块保持一致（视觉盒子由排序列表自身提供）
+- 全页面样式审计：补齐关闭/启动顺序区块外框（.order-section）缺失
+  的卡片背景/边框/内边距，与设置页其他区块视觉一致
+- 「测试关闭耗时」改为逐项驱动并实时展示进度：新增单项测试接口
+  /api/test-stop-item，前端按关闭顺序逐个调用，每完成一项立即
+  刷新结果区（✅/❌ 行 + 当前测试项 (N/M) 进度），不再长时间空白
+- 修复「测试关闭耗时」按钮点击无反应（i18n 取词误用未定义变量
+  导致脚本抛错，改用 i18n.t(key)）与按钮样式异常（btn-secondary
+  无样式定义，改用 btn-auto-fetch 与其他操作按钮一致）；同步修复
+  监控页统计表取词逻辑
+- 修复监控页「应用关闭耗时统计」卡片被挤成 1/12 宽度导致展示
+  不完整（缺失 grid-column 跨列规则）；语言包缓存版本号递增至
+  12，修复配置页新增元素无法切换为中文的问题
+- 新增关闭超时体系：可配置关闭序列总超时（秒，0=不限制），自动
+  触发超时后跳过剩余应用并立即执行系统关机；新增「测试关闭耗时」
+  按钮（按顺序停止应用计时后立即启动还原）与建议总超时
+  （Σ实测耗时 × (1 + 富裕比率)，比率可调，默认 10%）；每次停止
+  记录耗时并统计平均值，监控页新增「应用关闭耗时统计」卡片
+- 新增开机自动启动：fnOS 开机后应用自动按 startupOrder 顺序启动
+  全部配置项（延迟 30 秒等待系统服务就绪，失败项每 60 秒仅重试
+  失败项、最多 3 轮），与断线自动关机形成完整电源管理闭环；
+  手动"立即启动"接口复用同一序列执行函数
+- 打包修复：fpk 不再包含运行时配置文件 server/config.json 与
+  advanced_config.json，升级/覆盖部署不再重置用户配置；应用启动时
+  自动以默认值创建缺失的配置文件
+- 修复开机后探测地址不可达导致再次自动关机的死循环：状态机新增
+  pending（待武装）初始态，开机/启用后必须先探测成功一次才进入
+  armed，探测目标不可达时永不触发关机，用户可从容修改配置；
+  设置页状态徽章新增琥珀色"待武装"显示
+- 修复断线自动关机闭环两个缺陷：
+  * 系统关机缺失：特权助手新增 poweroff 动作（systemctl poweroff -i
+    优先、原生 poweroff 回退），自动触发在按顺序停止全部配置项后
+    执行系统关机，新增 autoShutdownPowerOff 配置（默认启用，仅影响
+    自动触发，手动"立即关闭"行为不变），设置页新增对应开关
+  * 触发时关闭序列执行 0 项的诊断能力：execute_shutdown_sequence
+    现记录订单长度与关机标志到运行日志，执行结果可追溯
+- 新增断线自动关机闭环（核心电源管理自动化）：
+  * AutoShutdownController 状态机（armed/triggered/disabled）接入
+    内网/外网探测循环，触发源连续失败达到阈值后自动按关闭顺序
+    执行停机，恢复需连续成功确认后重新武装，防抖防重复触发
+  * 触发源可选 lan/wan/any，失败与恢复阈值均可配置（含校验）
+  * /api/status 暴露状态机快照；设置页新增配置卡片与实时状态徽章
+  * 抽取 execute_shutdown_sequence() 供手动/自动执行共用
+- 删除通知渠道配置功能点：该功能仅为 channels 数组的配置读写壳，
+  无任何发送实现（SMTP/webhook/推送）、无前端 UI、无触发时机，
+  连同 /api/notification-config 接口与 notification_config.json
+  持久化文件路径一并移除，配置管理收敛为基础/高级两类
+- 清理无用功能点，核心功能高度内聚：
+  * 移除从未使用的 uvicorn 依赖与整套 venv/pip 安装链，改为系统
+    Python 直接启动（删除 requirements.txt，简化 cmd/main、
+    install_callback、upgrade_callback，并自动清理旧版遗留 venv）
+  * 删除无引用的死文件 serve1.py（旧版纯静态服务器）
+  * 移除存而不用的 debounceTime/debug 配置字段及其校验与回显
+  * 移除已废弃的 stopApps/dockerContainers 冗余双写字段，前端改为
+    由 shutdownOrder/startupOrder 派生扁平列表
+  * 遗留 localStorage 前缀 iot-manager-* 更名 freepower-*（含一次性
+    迁移，用户已保存的语言/主题偏好不受影响）
+  * .gitignore 排除 *.fpk 构建产物
+- 移除 IoT 功能，核心功能收敛为网络监控与应用电源管理：
+  * 删除 IotConfig 配置类、IOT_CONFIG_FILE 常量与 /api/iot-config
+    GET/POST 接口（原仅配置读写壳，无 MQTT/云端集成实现）
+  * 删除 docs/aliyun-iot-integration.md 阿里云 IoT 接入方案文档
+  * README 接口列表同步移除 iot-config 条目
+  * 前端页面标题 IotManager 更名 FreePower
+- 新增主题包系统：
+  * 颜色与特效样式从 index.html 基础样式中提取为独立主题包，基础样式
+    仅保留布局与动效；所有颜色引用改为 var(--token, 原值) 形式，
+    未加载主题包时回退原外观
+  * 内置「赛博朋克」(Cyberpunk) 主题包（app/ui/themes/cyberpunk，
+    含 theme.json 元数据与 theme.css），日间/夜间模式随主题包生效
+  * 主题包元数据支持国际化名称映射（name: {"zh-CN": "...", "en": "..."}），
+    界面按当前语言显示主题名称
+  * 新增 API：GET /api/themes（列表）、POST /api/themes/active（切换）、
+    POST /api/themes/upload（上传，支持单主题 zip 与多主题备份 zip，
+    含路径穿越防护与大小限制）、GET /api/themes/<id>/download（下载）、
+    GET /api/themes/backup（备份全部主题为 zip）
+  * config.json 新增 themePackage 字段持久化当前主题（跨浏览器生效），
+    前端 localStorage 记录本机选择
+  * 设置页新增「主题包」分区：主题列表（本地化名称/版本/使用中徽章）、
+    启用/下载按钮、上传与备份全部入口
+  * 背景粒子色板改为读取主题 CSS 变量（--particle-colors-night/day），
+    JS 内联颜色改用 CSS 变量引用
+  * 新增 dev-tools/extract_theme.py 提取脚本与 15 个 i18n 键（中英文）
 - 遵循飞牛 OS 权限规范，新增特权助手守护进程（priv_helper）：
   生命周期脚本以 root 运行，Web 服务经 runuser 降权到包用户
 - 获取应用/启动应用/停止应用三个操作通过 Unix socket 临时申请 root 权限，

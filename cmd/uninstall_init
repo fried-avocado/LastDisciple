@@ -9,7 +9,7 @@ log_msg() {
 ### This script is called before the user uninstalls the application.
 ### Stop the running process gracefully before uninstall.
 
-log_msg "Stopping ${TRIM_APPNAME:-FreePower} before uninstall..."
+log_msg "Stopping ${TRIM_APPNAME:-LastDisciple} before uninstall..."
 
 PID_FILE="${TRIM_PKGVAR}/app.pid"
 

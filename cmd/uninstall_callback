@@ -8,7 +8,7 @@ log_msg() {
 
 APP_SRC_DIR="${TRIM_APPDEST}/server"
 
-log_msg "Uninstall callback triggered for ${TRIM_APPNAME:-FreePower}"
+log_msg "Uninstall callback triggered for ${TRIM_APPNAME:-LastDisciple}"
 
 if [ "${wizard_data_action:-}" != "delete" ]; then
   log_msg "Data keep mode selected, skipping cleanup."

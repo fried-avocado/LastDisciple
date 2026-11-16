@@ -8,9 +8,9 @@ python3 -m py_compile priv_helper.py && echo "priv_helper.py OK"
 
 echo ""
 echo "===== 2. 启动特权助手（root，测试用户=root） ====="
-export TRIM_PKGVAR=/tmp/freepower_log_test
+export TRIM_PKGVAR=/tmp/lastdisciple_log_test
 mkdir -p "$TRIM_PKGVAR"
-SOCK="/tmp/freepower_log_test/priv_helper.sock"
+SOCK="/tmp/lastdisciple_log_test/priv_helper.sock"
 rm -f "$SOCK" "$TRIM_PKGVAR/info.log"
 python3 priv_helper.py "$SOCK" root > /tmp/log_helper_stdout.log 2>&1 &
 HPID=$!

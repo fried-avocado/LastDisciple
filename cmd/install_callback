@@ -7,57 +7,24 @@ log_msg() {
 }
 
 APP_SRC_DIR="${TRIM_APPDEST}/server"
-VENV_DIR="${TRIM_PKGVAR}/.venv"
-PIP_INDEX="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
-PIP_INDEX_BACKUP="https://pypi.org/simple"
 
-log_msg "Starting install for ${TRIM_APPNAME:-FreePower} ${TRIM_APPVER:-1.0.0}"
+log_msg "Starting install for ${TRIM_APPNAME:-LastDisciple} ${TRIM_APPVER:-1.0.0}"
 log_msg "App directory: ${TRIM_APPDEST}"
 log_msg "Data directory: ${TRIM_PKGVAR}"
 
-find_python() {
-  for candidate in /usr/bin/python3 /usr/local/bin/python3 /usr/bin/python3.11 /usr/bin/python3.12 /usr/bin/python3.10; do
-    if [ -x "${candidate}" ]; then
-      echo "${candidate}"
-      return 0
-    fi
-  done
-  return 1
-}
-
-PYTHON_BIN=$(find_python)
-if [ -z "${PYTHON_BIN}" ]; then
-  log_msg "ERROR: Python3 not found on this system"
-  exit 1
+# 应用为纯 Python 标准库实现，无第三方依赖，不再创建 venv；
+# 这里清理旧版本遗留的 venv 目录
+if [ -n "${TRIM_PKGVAR}" ] && [ -d "${TRIM_PKGVAR}/.venv" ]; then
+  log_msg "Removing legacy venv: ${TRIM_PKGVAR}/.venv"
+  rm -rf "${TRIM_PKGVAR}/.venv"
+fi
+if [ -n "${APP_SRC_DIR}" ] && [ -d "${APP_SRC_DIR}/.venv" ]; then
+  log_msg "Removing legacy venv: ${APP_SRC_DIR}/.venv"
+  rm -rf "${APP_SRC_DIR}/.venv"
+  rm -f "${APP_SRC_DIR}/.venv_migrated"
 fi
 
 mkdir -p "${TRIM_PKGVAR}"
-
-if [ ! -d "${VENV_DIR}" ] || [ ! -f "${VENV_DIR}/bin/python" ]; then
-  log_msg "Creating virtual environment in ${VENV_DIR} with ${PYTHON_BIN}..."
-  rm -rf "${VENV_DIR}"
-  "${PYTHON_BIN}" -m venv "${VENV_DIR}" >>"${LOG_FILE}" 2>&1
-
-  log_msg "Installing dependencies..."
-  if ! "${VENV_DIR}/bin/pip" install --quiet --upgrade pip -i ${PIP_INDEX} >>"${LOG_FILE}" 2>&1; then
-    log_msg "Primary mirror failed, trying backup..."
-    "${VENV_DIR}/bin/pip" install --quiet --upgrade pip -i ${PIP_INDEX_BACKUP} >>"${LOG_FILE}" 2>&1
-  fi
-
-  if ! "${VENV_DIR}/bin/pip" install --quiet -r "${APP_SRC_DIR}/requirements.txt" -i ${PIP_INDEX} >>"${LOG_FILE}" 2>&1; then
-    log_msg "Primary mirror failed for deps, trying backup..."
-    "${VENV_DIR}/bin/pip" install --quiet -r "${APP_SRC_DIR}/requirements.txt" -i ${PIP_INDEX_BACKUP} >>"${LOG_FILE}" 2>&1
-  fi
-
-  log_msg "Virtual environment created successfully."
-fi
-
-if [ -d "${APP_SRC_DIR}/.venv" ] && [ ! -f "${APP_SRC_DIR}/.venv_migrated" ]; then
-  log_msg "Removing old venv from app source dir..."
-  rm -rf "${APP_SRC_DIR}/.venv"
-  touch "${APP_SRC_DIR}/.venv_migrated"
-fi
-
 mkdir -p "${TRIM_PKGVAR}/logs"
 
 log_msg "Install completed successfully."
