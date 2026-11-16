@@ -1,13 +1,13 @@
 appname                    = LastDisciple
-version                    = 1.0.81
+version                    = 1.0.82
 display_name               = 关门弟子
-desc                       = """关门弟子——NAS 电源管家。实时监测内外网连通状态，断线时按自定义顺序自动关闭应用并安全关机；开机后延迟就绪、按序自动启动应用。支持关闭耗时实测与统计、总超时兜底、防误触发状态机，为无人值守场景提供完整的电源自动化闭环。"""
+desc                       = """关门弟子——NAS 电源管家。实时监测内外网连通状态，断线时按自定义顺序自动关闭应用并安全关机；开机后延迟就绪、按序自动启动应用。支持关闭耗时实测与统计、总超时兜底、防误触发状态机，为无人值守场景提供完整的电源自动化闭环。开源地址：https://github.com/fried-avocado/LastDisciple"""
 platform                   = x86
 source                     = thirdparty
 maintainer                 = 牛油果
-maintainer_url             = https://club.fnnas.com/home.php?mod=space&uid=94706
+maintainer_url             = https://github.com/fried-avocado/LastDisciple
 distributor                = 牛油果
-distributor_url            = https://club.fnnas.com/home.php?mod=space&uid=94706
+distributor_url            = https://github.com/fried-avocado/LastDisciple
 os_min_version             = 1.1.8
 ctl_stop                   = true
 desktop_uidir              = ui
@@ -17,6 +17,8 @@ checkport                  = true
 install_dep_apps           = python 3.9>3.9.10
 disable_authorization_path = false
 changelog                  = """
+- 软件介绍追加开源地址（GitHub 仓库），应用中心开发者名字
+  （牛油果）点击跳转由飞牛社区主页改为 GitHub 仓库
 - 修复 /api/config 接口返回 200 空响应体（前端设置页加载配置
   失败）：Config.__init__ 缺少 theme_package 默认值，该属性此前
   仅在 load() 成功读取到 config.json 时才赋值，全新安装/从未保存

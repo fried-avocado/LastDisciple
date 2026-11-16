@@ -1,6 +1,8 @@
 # LastDisciple
 
-LastDisciple 是一款运行于飞牛 fnOS 的网络监控与智能电源管理应用。通过实时 Ping 探测网关连通性，在网络断开时自动关闭指定应用和 Docker 容器，网络恢复后按预设顺序重新启动，实现 NAS 的智能断电保护。
+LastDisciple（关门弟子）是一款运行于飞牛 fnOS 的网络监控与智能电源管理应用。通过实时 Ping 探测网关连通性，在网络断开时自动关闭指定应用和 Docker 容器，网络恢复后按预设顺序重新启动，实现 NAS 的智能断电保护。
+
+> 开源地址：[https://github.com/fried-avocado/LastDisciple](https://github.com/fried-avocado/LastDisciple)
 
 ## 功能特性
 
@@ -180,4 +182,4 @@ python server.py <ui目录> <端口> <socket路径> [网关前缀]
 
 ## 维护者
 
-- **牛油果** — [飞牛社区主页](https://club.fnnas.com/home.php?mod=space&uid=94706)
+- **牛油果** — GitHub：[fried-avocado/LastDisciple](https://github.com/fried-avocado/LastDisciple) · [飞牛社区主页](https://club.fnnas.com/home.php?mod=space&uid=94706)
