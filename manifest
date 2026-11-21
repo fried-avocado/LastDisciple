@@ -1,5 +1,5 @@
 appname                    = LastDisciple
-version                    = 1.0.82
+version                    = 1.0.83
 display_name               = 关门弟子
 desc                       = """关门弟子——NAS 电源管家。实时监测内外网连通状态，断线时按自定义顺序自动关闭应用并安全关机；开机后延迟就绪、按序自动启动应用。支持关闭耗时实测与统计、总超时兜底、防误触发状态机，为无人值守场景提供完整的电源自动化闭环。开源地址：https://github.com/fried-avocado/LastDisciple"""
 platform                   = x86
@@ -14,9 +14,18 @@ desktop_uidir              = ui
 desktop_applaunchname      = LastDisciple.Application
 service_port               = 8848
 checkport                  = true
-install_dep_apps           = python 3.9>3.9.10
 disable_authorization_path = false
 changelog                  = """
+- 移除失效的 install_dep_apps 依赖声明：依赖名含空格
+  （python 3.9>3.9.10）不符合应用中心按技术 appname（无空格）
+  解析依赖的格式，自引入起即被解析器静默丢弃——从未写入依赖
+  关系库（appcenter.app_relation 恒空）、从未在应用详情页
+  「依赖的应用」区块显示、也从未在缺运行时的机器上触发安装。
+  应用为纯标准库实现（语法兼容 Python 3.6+，实际仅
+  ThreadingHTTPServer 要求 3.7+），经 cmd/main find_python
+  直接使用 fnOS 内置系统 Python（os_min_version=1.1.8 保证
+  /usr/bin/python3=3.11 可用），对应用中心 Python 运行时应用
+  （python39 等）无任何依赖，该声明已无存在意义
 - 软件介绍追加开源地址（GitHub 仓库），应用中心开发者名字
   （牛油果）点击跳转由飞牛社区主页改为 GitHub 仓库
 - 修复 /api/config 接口返回 200 空响应体（前端设置页加载配置
